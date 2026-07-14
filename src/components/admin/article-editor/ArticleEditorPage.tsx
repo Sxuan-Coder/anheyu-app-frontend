@@ -71,11 +71,31 @@ registerMarkedExtensions(marked);
 
 export function ArticleEditorPage({ articleId }: ArticleEditorPageProps) {
   const router = useRouter();
-  const isEditMode = !!articleId;
+
+  const isRouteEditMode = !!articleId;
+
+  /**
+   * draftArticleId 是当前页面实际正在编辑的文章 ID：
+   * 编辑已有文章时，初始值就是 articleId
+   * 新建文章时，初始值是 undefined
+   * 第一次自动保存创建草稿成功后，会被设置成后端返回的新 ID
+   */
+  const [draftArticleId, setDraftArticleId] = useState<string | undefined>(articleId);
+
+  // currentArticleId 是后续保存以及自动保存真正使用的 ID
+  const currentArticleId = draftArticleId;
+
+  useEffect(() => {
+    setDraftArticleId(articleId);
+  }, [articleId]);
+
+  const isEditMode = !!currentArticleId;
   const isAdmin = useAuthStore(state => state.user?.userGroupID === 1 || state.roles.includes("1"));
 
   // 编辑模式：加载文章数据
-  const { data: article, isLoading: isLoadingArticle } = useArticleForEdit(articleId ?? "", { enabled: isEditMode });
+  const { data: article, isLoading: isLoadingArticle } = useArticleForEdit(articleId ?? "", {
+    enabled: isRouteEditMode,
+  });
 
   // 标题状态
   const [title, setTitle] = useState("");
@@ -190,12 +210,13 @@ export function ArticleEditorPage({ articleId }: ArticleEditorPageProps) {
     lastSavedAt,
     markAsSaved,
   } = useAutoSave({
-    articleId,
+    articleId: currentArticleId,
+    onArticleCreated: setDraftArticleId,
     editor,
     title,
     getSubmitData,
     interval: 30000,
-    enabled: isEditMode,
+    enabled: true,  // 新建页也启用自动保存，真正是否创建草稿由 useAutoSave 内部判断（标题和内容都为空不保存）
     editorMode,
     sourceContent,
   });
@@ -235,9 +256,10 @@ export function ArticleEditorPage({ articleId }: ArticleEditorPageProps) {
   // 保存文章
   const handleSave = () => {
     const currentTitle = title.trim();
+    const currentStatus = meta.status;
 
-    if (!currentTitle) {
-      addToast({ title: "请输入文章标题", color: "warning" });
+    if (currentStatus !== "DRAFT" && !currentTitle) {
+      addToast({ title: "发布文章前请输入标题", color: "warning" });
       return;
     }
 
@@ -259,10 +281,10 @@ export function ArticleEditorPage({ articleId }: ArticleEditorPageProps) {
     // 合并元数据
     const metaData = getSubmitData();
 
-    if (isEditMode && articleId) {
+    if (currentArticleId) {
       updateMutation.mutate(
         {
-          id: articleId,
+          id: currentArticleId,
           data: {
             title: currentTitle,
             content_html: html,
@@ -273,7 +295,10 @@ export function ArticleEditorPage({ articleId }: ArticleEditorPageProps) {
         {
           onSuccess: () => {
             markAsSaved();
-            addToast({ title: "文章已更新", color: "success" });
+            addToast({
+              title: meta.status === "DRAFT" ? "草稿已保存" : "文章已更新",
+              color: "success",
+            });
           },
           onError: error => {
             addToast({ title: "更新失败", description: error.message, color: "danger" });
@@ -290,8 +315,12 @@ export function ArticleEditorPage({ articleId }: ArticleEditorPageProps) {
           ...metaData,
         },
         {
-          onSuccess: () => {
-            addToast({ title: "文章已发布", color: "success" });
+          onSuccess: created => {
+            setDraftArticleId(created.id);
+            addToast({
+              title: meta.status === "DRAFT" ? "草稿已保存" : "文章已发布",
+              color: "success",
+            });
             router.push("/admin/post-management");
           },
           onError: error => {
@@ -334,7 +363,7 @@ export function ArticleEditorPage({ articleId }: ArticleEditorPageProps) {
           isEditMode={isEditMode}
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          articleId={articleId}
+          articleId={currentArticleId}
           isDoc={meta.is_doc}
           autoSaveStatus={autoSaveStatus}
           lastSavedAt={lastSavedAt}

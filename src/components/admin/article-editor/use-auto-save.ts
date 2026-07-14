@@ -17,6 +17,8 @@ export type AutoSaveStatus = "idle" | "saving" | "saved" | "error";
 interface UseAutoSaveOptions {
   /** 文章 ID（仅编辑模式时有效） */
   articleId?: string;
+  /** 自动保存第一次创建出草稿后，把新文章 ID 回传给页面 */
+  onArticleCreated?: (id: string) => void;
   /** 编辑器实例 */
   editor: Editor | null;
   /** 标题 */
@@ -60,6 +62,7 @@ registerCustomRules(turndownService);
  */
 export function useAutoSave({
   articleId,
+  onArticleCreated,
   editor,
   title,
   getSubmitData,
@@ -76,6 +79,20 @@ export function useAutoSave({
   const savingRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoCreatedDraftRef = useRef(false);
+
+  /**
+   * 当前自动保存使用的文章 ID
+   * 编辑模式下来自 props.articleId；
+   * 新建模式下，第一次 createArticle 成功后写入这里
+   */
+  const activeArticleIdRef = useRef<string | undefined>(articleId);
+
+  useEffect(() => {
+    activeArticleIdRef.current = articleId;
+  }, [articleId]);
+
   /** 计算内容的简单哈希 */
   const computeHash = useCallback((t: string, html: string) => {
     // 使用简单的字符串拼接作为哈希（足以检测变化）
@@ -84,18 +101,32 @@ export function useAutoSave({
 
   /** 执行保存 */
   const doSave = useCallback(async () => {
-    if (!articleId || savingRef.current) return;
-    if (!title.trim()) return;
+    if (savingRef.current) return;
 
     let contentForHash: string;
+    let isEmptyContent = false;
+
     if (editorMode === "visual") {
       if (!editor || editor.isDestroyed) return;
+
       contentForHash = editor.getHTML();
+
+      isEmptyContent = editor.isEmpty;
     } else {
       contentForHash = sourceContent;
+
+      // HTML / Markdown 源码模式下，用 trim 判断是否为空
+      isEmptyContent = sourceContent.trim().length === 0;
     }
 
-    const hash = computeHash(title, contentForHash);
+    const trimmedTitle = title.trim();
+
+    // 新建文章：标题和正文都为空时，不创建空草稿
+    if (!activeArticleIdRef.current && !trimmedTitle && isEmptyContent) {
+      return;
+    }
+
+    const hash = computeHash(trimmedTitle, contentForHash);
     if (hash === lastContentHashRef.current) return;
 
     savingRef.current = true;
@@ -117,13 +148,35 @@ export function useAutoSave({
       }
 
       const metaData = getSubmitData();
+      const targetArticleId = activeArticleIdRef.current;
 
-      await postManagementApi.updateArticle(articleId, {
-        title: title.trim(),
-        content_html: html,
-        content_md: markdown,
-        ...metaData,
-      });
+      if (targetArticleId) {
+        const updateData: Record<string, unknown> = {
+          title: trimmedTitle,
+          content_html: html,
+          content_md: markdown,
+          ...metaData,
+        };
+        if (autoCreatedDraftRef.current) {
+          updateData.status = "DRAFT";
+        }
+        await postManagementApi.updateArticle(targetArticleId, updateData);
+      } else {
+        // 新建文章还没有 ID 第一次自动保存时创建草稿
+        const created = await postManagementApi.createArticle({
+          ...metaData,
+          title: trimmedTitle,  // 标题允许为空字符串
+          content_html: html,
+          content_md: markdown,
+          status: "DRAFT",
+        });
+
+        activeArticleIdRef.current = created.id;
+        autoCreatedDraftRef.current = true;
+
+        // ArticleEditorPage 保存此 ID
+        onArticleCreated?.(created.id);
+      }
 
       lastContentHashRef.current = hash;
       setLastSavedAt(new Date());
@@ -133,7 +186,7 @@ export function useAutoSave({
     } finally {
       savingRef.current = false;
     }
-  }, [articleId, editor, title, getSubmitData, computeHash, editorMode, sourceContent]);
+  }, [editor, title, getSubmitData, computeHash, editorMode, sourceContent, onArticleCreated]);
 
   /** 手动触发保存 */
   const triggerSave = useCallback(() => {
@@ -155,7 +208,7 @@ export function useAutoSave({
 
   // 定时器：定期检测并保存
   useEffect(() => {
-    if (!enabled || !articleId) return;
+    if (!enabled) return;
 
     timerRef.current = setInterval(() => {
       doSave();
@@ -167,14 +220,49 @@ export function useAutoSave({
         timerRef.current = null;
       }
     };
-  }, [enabled, articleId, interval, doSave]);
+  }, [enabled, interval, doSave]);
+
+  // 输入停止 3 秒后自动保存
+  useEffect(() => {
+    if (!enabled) return;
+    if (editorMode !== "visual") return;
+    if (!editor || editor.isDestroyed) return;
+
+    const scheduleSave = () => {
+      // 如果用户持续输入，就清掉上一次定时器，重新计时
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+
+      // 用户停止输入 3 秒后保存
+      debounceTimerRef.current = setTimeout(() => {
+        doSave();
+      }, 3000);
+    };
+
+    // Tiptap 编辑器内容变化时触发
+    editor.on("update", scheduleSave);
+
+    return () => {
+      // 组件卸载或 editor 变化时，移除监听，避免重复绑定
+      editor.off("update", scheduleSave);
+
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+    };
+  }, [enabled, editor, editorMode, doSave]);
 
   // 页面卸载前尝试保存
   useEffect(() => {
-    if (!enabled || !articleId) return;
+    if (!enabled) return;
 
     const handleBeforeUnload = () => {
-      if (!title.trim()) return;
+      const targetArticleId = activeArticleIdRef.current;
+
+      // 没有 ID 的新文章，不在 unload 时创建，第一次创建交正常自动保存定时器做
+      if (!targetArticleId) return;
 
       let contentForHash: string;
       if (editorMode === "visual") {
@@ -199,13 +287,13 @@ export function useAutoSave({
           html = processHtmlForSave(fixTaskListHtml(marked.parse(sourceContent, { async: false }) as string));
         }
         const data = JSON.stringify({ title: title.trim(), content_html: html, content_md: markdown });
-        navigator.sendBeacon?.(`/api/articles/${articleId}`, new Blob([data], { type: "application/json" }));
+        navigator.sendBeacon?.(`/api/articles/${targetArticleId}`, new Blob([data], { type: "application/json" }));
       }
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [enabled, articleId, editor, title, computeHash, editorMode, sourceContent]);
+  }, [enabled, editor, title, computeHash, editorMode, sourceContent]);
 
   return { status, lastSavedAt, triggerSave, markAsSaved };
 }
