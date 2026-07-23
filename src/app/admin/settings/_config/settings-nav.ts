@@ -117,6 +117,12 @@ export const settingsCategories: CategorySection[] = [
       },
       { id: "advanced-wechat-share", label: "微信分享", icon: Share2, keywords: ["微信", "分享", "JS-SDK", "公众号"] },
       {
+        id: "advanced-ai",
+        label: "AI 助手",
+        icon: Sparkles,
+        keywords: ["AI", "摘要", "配图", "openai", "gpt-image", "gemini", "nano-banana", "大模型"],
+      },
+      {
         id: "advanced-backup",
         label: "备份导入",
         icon: DatabaseBackup,

@@ -62,6 +62,9 @@ export const settingsFormRegistry: Record<SettingCategoryId, LazyForm> = {
   "advanced-wechat-share": lazy(() =>
     import("@/components/admin/settings/WechatShareForm").then(m => ({ default: m.WechatShareForm }))
   ) as LazyForm,
+  "advanced-ai": lazy(() =>
+    import("@/components/admin/settings/AIProfilesForm").then(m => ({ default: m.AIProfilesForm }))
+  ) as LazyForm,
   "advanced-backup": lazy(() =>
     import("@/components/admin/settings/BackupImportForm").then(m => ({ default: m.BackupImportForm }))
   ) as LazyForm,

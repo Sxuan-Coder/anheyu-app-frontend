@@ -24,6 +24,8 @@ import {
   Loader2,
   Upload,
   TextQuote,
+  Wand2,
+  Sparkles,
 } from "lucide-react";
 import {
   addToast,
@@ -42,6 +44,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useDocSeriesList } from "@/hooks/queries/use-doc-series";
 import { articleApi } from "@/lib/api/article";
 import { postManagementApi } from "@/lib/api/post-management";
+import { articleAiApi } from "@/lib/api/article-ai";
+import { getErrorMessage } from "@/lib/api/client";
 import type { Editor } from "@tiptap/react";
 import type { ArticleStatus } from "@/types/post-management";
 import type { PostCategory, PostTag } from "@/types/article";
@@ -776,6 +780,8 @@ interface SettingsContentProps {
   isLoadingTags?: boolean;
   editorVariant: EditorSidebarProps["editorVariant"];
   getBodyPlainTextForSummary?: EditorSidebarProps["getBodyPlainTextForSummary"];
+  getCompleteHtmlForAISummary?: EditorSidebarProps["getCompleteHtmlForAISummary"];
+  articleTitle?: EditorSidebarProps["articleTitle"];
 }
 
 function SettingsContent({
@@ -788,12 +794,16 @@ function SettingsContent({
   isLoadingTags,
   editorVariant,
   getBodyPlainTextForSummary,
+  getCompleteHtmlForAISummary,
+  articleTitle,
 }: SettingsContentProps) {
   const queryClient = useQueryClient();
   const topImgInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingTopImg, setIsUploadingTopImg] = useState(false);
   const coverImgInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [isGeneratingCover, setIsGeneratingCover] = useState(false);
   const [fillSummaryDialogOpen, setFillSummaryDialogOpen] = useState(false);
   const [pendingSummaryClip, setPendingSummaryClip] = useState<string | null>(null);
 
@@ -897,6 +907,82 @@ function SettingsContent({
     [onUpdateField]
   );
 
+  // AI 生成摘要
+  const handleAISummary = useCallback(async () => {
+    const title = (articleTitle ?? "").trim();
+    const content = getCompleteHtmlForAISummary?.() ?? getBodyPlainTextForSummary?.() ?? "";
+    if (!title && !content.trim()) {
+      addToast({ title: "标题和正文均为空，无法生成摘要", color: "warning" });
+      return;
+    }
+    setIsGeneratingSummary(true);
+    try {
+      const res = await articleAiApi.summary({ title, content });
+      const summary = res.data?.summary?.trim();
+      if (!summary) {
+        addToast({ title: "AI 未返回有效摘要", color: "warning" });
+        return;
+      }
+      if (editorVariant === "app") {
+        if (meta.summaries[0]?.trim()) {
+          setPendingSummaryClip(summary);
+          setFillSummaryDialogOpen(true);
+          return;
+        }
+        onUpdateField("summaries", [summary]);
+      } else {
+        const arr = [...meta.summaries];
+        const emptyIdx = arr.findIndex(s => !s.trim());
+        if (emptyIdx >= 0) {
+          arr[emptyIdx] = summary;
+        } else if (arr.length < maxSummarySlots) {
+          arr.push(summary);
+        } else {
+          arr[0] = summary;
+        }
+        onUpdateField("summaries", arr.slice(0, maxSummarySlots));
+      }
+      addToast({ title: "AI 摘要已生成", color: "success" });
+    } catch (err) {
+      addToast({ title: "AI 摘要生成失败", description: getErrorMessage(err), color: "danger" });
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  }, [
+    articleTitle,
+    getCompleteHtmlForAISummary,
+    getBodyPlainTextForSummary,
+    editorVariant,
+    meta.summaries,
+    maxSummarySlots,
+    onUpdateField,
+  ]);
+
+  // AI 一键配图
+  const handleAICover = useCallback(async () => {
+    const title = (articleTitle ?? "").trim();
+    const content = getCompleteHtmlForAISummary?.() ?? getBodyPlainTextForSummary?.() ?? "";
+    if (!title && !content.trim()) {
+      addToast({ title: "标题和正文均为空，无法生成配图", color: "warning" });
+      return;
+    }
+    setIsGeneratingCover(true);
+    try {
+      const res = await articleAiApi.cover({ title, content });
+      const url = res.data?.url;
+      if (!url) {
+        addToast({ title: "AI 未返回有效图片", color: "warning" });
+        return;
+      }
+      onUpdateField("cover_url", url);
+      addToast({ title: "AI 配图已生成", color: "success" });
+    } catch (err) {
+      addToast({ title: "AI 配图生成失败", description: getErrorMessage(err), color: "danger" });
+    } finally {
+      setIsGeneratingCover(false);
+    }
+  }, [articleTitle, getCompleteHtmlForAISummary, getBodyPlainTextForSummary, onUpdateField]);
+
   return (
     <>
       <div className="sb-body">
@@ -996,6 +1082,15 @@ function SettingsContent({
             >
               {isUploadingCover ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
             </button>
+            <button
+              type="button"
+              className="sb-upload-btn"
+              onClick={handleAICover}
+              disabled={isGeneratingCover}
+              title="AI 一键配图"
+            >
+              {isGeneratingCover ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            </button>
             <input
               ref={coverImgInputRef}
               type="file"
@@ -1071,6 +1166,19 @@ function SettingsContent({
             <button type="button" className="sb-add-btn py-1! px-2! text-[11px]" onClick={handleFillSummaryFromBody}>
               <TextQuote className="w-3 h-3 shrink-0" />
               取自正文前{SUMMARY_AUTO_MAX_CHARS}字
+            </button>
+            <button
+              type="button"
+              className="sb-add-btn py-1! px-2! text-[11px]"
+              onClick={handleAISummary}
+              disabled={isGeneratingSummary}
+            >
+              {isGeneratingSummary ? (
+                <Loader2 className="w-3 h-3 shrink-0 animate-spin" />
+              ) : (
+                <Wand2 className="w-3 h-3 shrink-0" />
+              )}
+              {isGeneratingSummary ? "生成中…" : "AI 生成摘要"}
             </button>
           </div>
           <div className="space-y-1.5">
@@ -1323,6 +1431,7 @@ export function EditorSidebar({
   isLoadingTags,
   editorVariant,
   getBodyPlainTextForSummary,
+  getCompleteHtmlForAISummary,
   editor,
   articleTitle,
 }: EditorSidebarProps) {
@@ -1364,6 +1473,8 @@ export function EditorSidebar({
             isLoadingTags={isLoadingTags}
             editorVariant={editorVariant}
             getBodyPlainTextForSummary={getBodyPlainTextForSummary}
+            getCompleteHtmlForAISummary={getCompleteHtmlForAISummary}
+            articleTitle={articleTitle}
           />
         ) : (
           <div className="p-4">

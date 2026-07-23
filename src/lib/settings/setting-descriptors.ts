@@ -40,6 +40,7 @@ export type SettingCategoryId =
   | "pages-music"
   | "advanced-captcha"
   | "advanced-wechat-share"
+  | "advanced-ai"
   | "advanced-backup";
 
 /** 文章版权声明默认模板（与前台渲染兜底保持一致） */
@@ -831,4 +832,7 @@ const categoryDescriptors: Record<SettingCategoryId, SettingDescriptor[]> = {
     { backendKey: K.KEY_WECHAT_SHARE_APP_SECRET, type: "password" },
   ],
   "advanced-backup": [],
+  "advanced-ai": [
+    { backendKey: K.KEY_AI_PROFILES, type: "json" },
+  ],
 };
