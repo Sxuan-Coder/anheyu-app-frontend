@@ -760,6 +760,7 @@ function InsertBlockMenu({ editor }: { editor: Editor }) {
     { label: "Tab 面板", action: () => cmds.insertTabsBlock?.() },
     { label: "链接卡片", action: () => cmds.insertLinkCard?.() },
     { label: "提示块", action: () => cmds.insertCallout?.() },
+    { label: "注释框", action: () => cmds.insertAdmonition?.("note") },
     { label: "隐藏内容", action: () => cmds.insertHiddenBlock?.() },
     { label: "音乐播放器", action: () => cmds.insertMusicBlock?.() },
     { label: "按钮", action: () => cmds.insertButton?.() },
