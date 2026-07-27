@@ -115,6 +115,45 @@ describe("generatePoster", () => {
     expect(loadedImageSources).toContain("data:image/png;base64,qr");
   });
 
+  it("同源直链跳转到跨域图床时先走图片代理", async () => {
+    const directLink = "/api/f/GkXUX/1777186885175520750.png";
+    const createObjectURLSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:poster-cover");
+    const revokeObjectURLSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async input => {
+        const requestedUrl = String(input);
+        if (requestedUrl.includes("/api/proxy/download?")) {
+          return new Response(new Blob(["png"], { type: "image/png" }), {
+            status: 200,
+            headers: { "Content-Type": "image/png" },
+          });
+        }
+        throw new TypeError(`redirected cross-origin fetch blocked: ${requestedUrl}`);
+      })
+    );
+
+    await expect(
+      generatePoster({
+        title: "同源直链海报",
+        description: "同源直链可能跳转到未开放 CORS 的跨域图床。",
+        author: "作者",
+        articleUrl: "https://blog.example.com/posts/Ams0",
+        coverImage: directLink,
+      })
+    ).resolves.toBe("data:image/png;base64,poster");
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/proxy/download?url="),
+      expect.objectContaining({ mode: "same-origin" })
+    );
+    expect(loadedImageSources).not.toContain(directLink);
+    expect(loadedImageSources).toContain("blob:poster-cover");
+    expect(createObjectURLSpy).toHaveBeenCalled();
+    expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:poster-cover");
+  });
+
   it("代理失败时仍可用 CORS 读取真实跨域封面生成海报", async () => {
     const coverUrl = "https://resources.olei.me/iicats/1778299161243386156.png";
     const createObjectURLSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:poster-cover");

@@ -46,6 +46,7 @@ export interface PlaylistCache {
   data: Song[];
   playlistId: string;
   customPlaylistUrl: string | null;
+  apiBaseURL: string;
   timestamp: number;
 }
 

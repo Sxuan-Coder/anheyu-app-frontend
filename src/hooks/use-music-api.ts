@@ -67,7 +67,7 @@ export function useMusicAPI() {
   const getMusicAPIBaseURL = useCallback((): string => {
     const config = siteConfigRef.current;
     const apiBaseURL = getConfigString(config, ["frontDesk.home.music.api.base_url", "music.api.base_url"]);
-    return apiBaseURL || "https://metings.qjqq.cn";
+    return (apiBaseURL || "https://metings.qjqq.cn").replace(/\/+$/, "");
   }, []);
 
   // 从配置获取当前播放列表ID
@@ -118,8 +118,13 @@ export function useMusicAPI() {
       const currentId = getCurrentPlaylistId();
       const currentCustomUrl = getCustomPlaylistUrl();
       const cachedCustomUrl = cache.customPlaylistUrl || null;
+      const currentAPIBaseURL = getMusicAPIBaseURL();
 
-      if (cache.playlistId !== currentId || cachedCustomUrl !== currentCustomUrl) {
+      if (
+        cache.playlistId !== currentId ||
+        cachedCustomUrl !== currentCustomUrl ||
+        cache.apiBaseURL !== currentAPIBaseURL
+      ) {
         localStorage.removeItem(CACHE_KEY);
         return null;
       }
@@ -129,7 +134,7 @@ export function useMusicAPI() {
       localStorage.removeItem(CACHE_KEY);
       return null;
     }
-  }, [getCurrentPlaylistId, getCustomPlaylistUrl]);
+  }, [getCurrentPlaylistId, getCustomPlaylistUrl, getMusicAPIBaseURL]);
 
   // 设置缓存
   const setPlaylistCache = useCallback(
@@ -139,6 +144,7 @@ export function useMusicAPI() {
           data,
           playlistId: getCurrentPlaylistId(),
           customPlaylistUrl: getCustomPlaylistUrl(),
+          apiBaseURL: getMusicAPIBaseURL(),
           timestamp: Date.now(),
         };
         localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
@@ -146,7 +152,7 @@ export function useMusicAPI() {
         console.error("[MUSIC_CACHE] 设置缓存失败:", error);
       }
     },
-    [getCurrentPlaylistId, getCustomPlaylistUrl]
+    [getCurrentPlaylistId, getCustomPlaylistUrl, getMusicAPIBaseURL]
   );
 
   // 清除缓存
@@ -285,8 +291,9 @@ export function useMusicAPI() {
 
       const currentCustomUrl = getCapsuleCustomPlaylistUrl();
       const cachedCustomUrl = cache.customPlaylistUrl || null;
+      const currentAPIBaseURL = getMusicAPIBaseURL();
 
-      if (cachedCustomUrl !== currentCustomUrl) {
+      if (cachedCustomUrl !== currentCustomUrl || cache.apiBaseURL !== currentAPIBaseURL) {
         localStorage.removeItem(CAPSULE_CACHE_KEY);
         return null;
       }
@@ -296,7 +303,7 @@ export function useMusicAPI() {
       localStorage.removeItem(CAPSULE_CACHE_KEY);
       return null;
     }
-  }, [getCapsuleCustomPlaylistUrl]);
+  }, [getCapsuleCustomPlaylistUrl, getMusicAPIBaseURL]);
 
   const setCapsulePlaylistCache = useCallback(
     (data: Song[]): void => {
@@ -305,6 +312,7 @@ export function useMusicAPI() {
           data,
           playlistId: getCurrentPlaylistId(),
           customPlaylistUrl: getCapsuleCustomPlaylistUrl(),
+          apiBaseURL: getMusicAPIBaseURL(),
           timestamp: Date.now(),
         };
         localStorage.setItem(CAPSULE_CACHE_KEY, JSON.stringify(cache));
@@ -312,7 +320,7 @@ export function useMusicAPI() {
         console.error("[CAPSULE_CACHE] 设置缓存失败:", error);
       }
     },
-    [getCurrentPlaylistId, getCapsuleCustomPlaylistUrl]
+    [getCurrentPlaylistId, getCapsuleCustomPlaylistUrl, getMusicAPIBaseURL]
   );
 
   // 获取音乐胶囊专用的歌单数据

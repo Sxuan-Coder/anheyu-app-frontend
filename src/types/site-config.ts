@@ -77,6 +77,10 @@ export interface SiteConfigData {
   RESPECT_REDUCED_MOTION?: boolean | string;
   /** 站点公告 HTML，展示在导航栏下方；由管理员配置 */
   SITE_ANNOUNCEMENT?: string;
+  /** 每篇文章正文上方注入的自定义 HTML，由管理员配置 */
+  CUSTOM_POST_TOP_HTML?: string;
+  /** 每篇文章正文下方注入的自定义 HTML，由管理员配置 */
+  CUSTOM_POST_BOTTOM_HTML?: string;
   GRAVATAR_URL?: string;
   DEFAULT_GRAVATAR_TYPE?: string;
   ENABLE_REGISTRATION?: boolean | string;

@@ -122,6 +122,10 @@
   color: var(--muted-foreground);
 }
 
+.customPostHtml {
+  width: 100%;
+}
+
 .postTagName {
   font-weight: 500;
 }

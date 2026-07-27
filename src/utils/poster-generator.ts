@@ -52,7 +52,8 @@ type ImageFetchCandidate = {
 
 /**
  * 为海报图片构造 fetch 候选。
- * 跨域 HTTP(S) 图优先走本站代理；代理不可用时再尝试 CORS 直取，覆盖图床本身已开放 CORS 的场景。
+ * 跨域图片和可能 302 到对象存储的同源直链优先走本站代理，避免跳转到未开放 CORS 的图床时被浏览器拦截。
+ * 代理不可用时再按原 URL 的同源性直取，兼容需要当前登录态的同源资源和已开放 CORS 的图床。
  */
 function getImageFetchCandidates(imageUrl: string): ImageFetchCandidate[] {
   const trimmed = imageUrl.trim();
@@ -65,22 +66,27 @@ function getImageFetchCandidates(imageUrl: string): ImageFetchCandidate[] {
 
   try {
     const resolved = new URL(trimmed, window.location.href);
-    if (resolved.origin === window.location.origin) {
-      return [{ url: trimmed, mode: "same-origin", credentials: "same-origin" }];
-    }
     if (resolved.protocol !== "http:" && resolved.protocol !== "https:") {
       return [{ url: trimmed, mode: "cors", credentials: "omit" }];
     }
 
     const candidates: ImageFetchCandidate[] = [];
-    if (!trimmed.includes("/api/proxy/download?")) {
+    const isCrossOrigin = resolved.origin !== window.location.origin;
+    const isRedirectingMediaPath = ["/api/f/", "/api/pro/f/", "/f/", "/needcache/"].some(prefix =>
+      resolved.pathname.startsWith(prefix)
+    );
+    if (resolved.pathname !== "/api/proxy/download" && (isCrossOrigin || isRedirectingMediaPath)) {
       candidates.push({
         url: `/api/proxy/download?url=${encodeURIComponent(resolved.href)}`,
         mode: "same-origin",
         credentials: "same-origin",
       });
     }
-    candidates.push({ url: resolved.href, mode: "cors", credentials: "omit" });
+    if (!isCrossOrigin) {
+      candidates.push({ url: trimmed, mode: "same-origin", credentials: "same-origin" });
+    } else {
+      candidates.push({ url: resolved.href, mode: "cors", credentials: "omit" });
+    }
     return candidates;
   } catch {
     return [{ url: trimmed, mode: "cors", credentials: "omit" }];

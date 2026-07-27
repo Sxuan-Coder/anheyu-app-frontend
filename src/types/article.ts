@@ -58,6 +58,17 @@ export interface FeedItem {
   total_sales?: number;
 }
 
+/**
+ * 首页推荐文章（HOME_TOP 右侧推荐卡片，数据源为后端 home_sort 排序）
+ */
+export interface HomeArticle {
+  id: string;
+  title: string;
+  cover_url?: string;
+  is_doc?: boolean;
+  doc_series_id?: string;
+}
+
 // ===================================
 //          API 响应类型
 // ===================================

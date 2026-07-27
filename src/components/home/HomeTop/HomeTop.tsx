@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { CreativityIcon } from "@/components/ui/creativity-icon";
 import { useSiteConfigStore } from "@/store/site-config-store";
 import { articleApi } from "@/lib/api/article";
+import { useHomeArticles } from "@/hooks/queries";
 
 import styles from "./HomeTop.module.css";
 
@@ -43,14 +44,6 @@ function getCategoryBackground(background: string | undefined, index: number) {
   return value;
 }
 
-interface RecommendedArticle {
-  id: number;
-  title: string;
-  cover_url?: string;
-  is_doc?: boolean;
-  doc_series_id?: number;
-}
-
 export function HomeTop() {
   const router = useRouter();
   const siteConfig = useSiteConfigStore(state => state.siteConfig);
@@ -61,8 +54,8 @@ export function HomeTop() {
   const [isTopGroupExpanded, setIsTopGroupExpanded] = useState(false);
   const [isRandomLoading, setIsRandomLoading] = useState(false);
 
-  // 推荐文章当前未配置独立接口，先保持为空并自动隐藏右侧推荐卡片区域
-  const recommendedArticles: RecommendedArticle[] = [];
+  // 首页推荐文章：数据源为后端 home_sort 排序（GET /api/public/articles/home）
+  const { data: recommendedArticles = [] } = useHomeArticles();
 
   // 创意图标列表（重复一次用于无限滚动）
   const creativityList = useMemo(() => {
@@ -282,7 +275,7 @@ export function HomeTop() {
                   isTopGroupExpanded && styles.hide,
                   shouldLoadLottie && styles.hasLottie
                 )}
-                href={homeTopConfig.banner?.link}
+                href={homeTopConfig.banner?.link || undefined}
                 target="_blank"
                 rel="noopener external nofollow noreferrer"
               >

@@ -1176,6 +1176,20 @@
 }
 
 /* ===================== 响应式设计 ===================== */
+@media (min-width: 769px) {
+  .artworkContainer {
+    width: 100%;
+    max-width: clamp(320px, calc(100dvh - 250px), 600px);
+    height: auto;
+    max-height: clamp(320px, calc(100dvh - 250px), 600px);
+  }
+
+  .lyricsSection {
+    min-height: clamp(320px, calc(100dvh - 250px), 540px);
+    max-height: clamp(320px, calc(100dvh - 250px), 540px);
+  }
+}
+
 @media (max-width: 1024px) {
   .musicContainer {
     min-height: 0;

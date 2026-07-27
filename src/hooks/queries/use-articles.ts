@@ -14,6 +14,7 @@ export const articleKeys = {
   all: ["articles"] as const,
   feed: () => [...articleKeys.all, "feed"] as const,
   feedList: (params: GetFeedListParams) => [...articleKeys.feed(), params] as const,
+  home: () => [...articleKeys.all, "home"] as const,
   list: (params: GetArticleListParams) => [...articleKeys.all, "list", params] as const,
   categories: () => [...articleKeys.all, "categories"] as const,
   tags: () => [...articleKeys.all, "tags"] as const,
@@ -57,6 +58,13 @@ export const archivesQueryOptions = () =>
     queryKey: articleKeys.archives(),
     queryFn: () => articleApi.getArchiveList(),
     staleTime: 1000 * 60 * 10, // 10 分钟
+  });
+
+export const homeArticlesQueryOptions = () =>
+  queryOptions({
+    queryKey: articleKeys.home(),
+    queryFn: () => articleApi.getHomeArticles(),
+    staleTime: 1000 * 60 * 5, // 5 分钟
   });
 
 // ===================================
@@ -109,6 +117,16 @@ export function useTags(sort: "count" | "name" = "count", options?: { enabled?: 
 export function useArchives(options?: { enabled?: boolean }) {
   return useQuery({
     ...archivesQueryOptions(),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+/**
+ * 获取首页推荐文章（HOME_TOP 右侧推荐卡片）
+ */
+export function useHomeArticles(options?: { enabled?: boolean }) {
+  return useQuery({
+    ...homeArticlesQueryOptions(),
     enabled: options?.enabled ?? true,
   });
 }

@@ -190,12 +190,19 @@ export function CardToc({ contentHtml, collapseMode = false }: CardTocProps) {
   useEffect(() => {
     if (!activeId || !tocContainerRef.current) return;
 
-    const activeElement = findTocElementById(tocContainerRef.current, activeId);
+    const container = tocContainerRef.current;
+    const activeElement = findTocElementById(container, activeId);
     if (activeElement) {
-      activeElement.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-      });
+      // 仅滚动目录自身容器，不使用 scrollIntoView：
+      // scrollIntoView 会连带滚动所有可滚祖先（包括页面），当目录项位于视口边缘时
+      // 会把页面拽向目录项，与用户的滚动方向对抗
+      const containerRect = container.getBoundingClientRect();
+      const elementRect = activeElement.getBoundingClientRect();
+      if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
+        const relativeTop = elementRect.top - containerRect.top + container.scrollTop;
+        const targetTop = relativeTop - (container.clientHeight - activeElement.offsetHeight) / 2;
+        container.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+      }
     }
 
     // 更新指示器位置

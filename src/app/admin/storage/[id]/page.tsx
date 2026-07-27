@@ -16,6 +16,7 @@ import { AliyunOssForm } from "@/components/admin/storage/AliyunOssForm";
 import { AwsS3Form } from "@/components/admin/storage/AwsS3Form";
 import { QiniuKodoForm } from "@/components/admin/storage/QiniuKodoForm";
 import { UpyunForm } from "@/components/admin/storage/UpyunForm";
+import ImageAutoCompressEditor from "./_components/ImageAutoCompressEditor";
 
 // ===================================
 // 大小单位换算
@@ -343,6 +344,12 @@ function PolicyEditForm({ initialData }: { initialData: StoragePolicy }) {
             </div>
           </div>
         </div>
+
+        {initialData.id && (
+          <div className="mt-4">
+            <ImageAutoCompressEditor policyId={initialData.id} />
+          </div>
+        )}
       </div>
     </div>
   );
