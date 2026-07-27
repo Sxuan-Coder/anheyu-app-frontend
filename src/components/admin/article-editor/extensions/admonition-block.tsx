@@ -42,6 +42,10 @@ function getTypeOption(type: string): TypeOption {
   return TYPE_OPTIONS.find(o => o.value === type) ?? TYPE_OPTIONS[0];
 }
 
+function getDirectChildByClass(el: HTMLElement, className: string): HTMLElement | undefined {
+  return Array.from(el.children).find(child => child.classList.contains(className)) as HTMLElement | undefined;
+}
+
 /** 类型切换下拉 */
 function TypeSelector({
   current,
@@ -263,6 +267,28 @@ export const AdmonitionBlock = Node.create({
             }
           }
           const titleEl = el.querySelector(".admonition-title");
+          return {
+            admonitionType: adType,
+            title: titleEl?.textContent || "",
+          };
+        },
+      },
+      {
+        tag: "div.md-editor-admonition",
+        contentElement: (el: HTMLElement) => {
+          const content = el.cloneNode(true) as HTMLElement;
+          getDirectChildByClass(content, "md-editor-admonition-title")?.remove();
+          return content;
+        },
+        getAttrs: (el: HTMLElement) => {
+          let adType: AdmonitionType = "note";
+          for (const t of ["note", "info", "tip", "success", "warning", "danger"] as AdmonitionType[]) {
+            if (el.classList.contains(`md-editor-admonition-${t}`)) {
+              adType = t;
+              break;
+            }
+          }
+          const titleEl = getDirectChildByClass(el, "md-editor-admonition-title");
           return {
             admonitionType: adType,
             title: titleEl?.textContent || "",

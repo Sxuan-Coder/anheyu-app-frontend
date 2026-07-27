@@ -156,9 +156,9 @@ function matchContainerBlock(src: string): { raw: string; tagName: string; param
 }
 
 /** Admonition 块支持的标签（与 turndown、编辑器一致；!!! 与类型之间可有空格） */
-const ADMONITION_OPEN_RE = /^!!!\s*(note|info|tip|success|warning|danger)\s*(.*)\n/;
-const ADMONITION_NESTED_OPEN_RE = /^!!!\s*(?:note|info|tip|success|warning|danger)\b/;
-const ADMONITION_CLOSE_RE = /(?:^|\s)!!!$/;
+const ADMONITION_OPEN_RE = /^!!![ \t]*(note|info|tip|success|warning|danger)(?:[ \t]+([^\r\n]*))?\r?\n/;
+const ADMONITION_NESTED_OPEN_RE =
+  /^!!![ \t]*(?:note|info|tip|success|warning|danger)(?:[ \t]+[^\r\n]*)?$/;
 
 /**
  * 从 src 开头匹配 !!!note|info|tip|success|warning|danger ... !!! 块（闭合为 !!!，支持嵌套与代码块跳过）
@@ -169,16 +169,18 @@ function matchAdmonitionBlock(src: string): { raw: string; tagName: string; para
   if (!openMatch) return null;
 
   const tagName = openMatch[1];
-  const params = openMatch[2].trim();
+  const params = openMatch[2]?.trim() ?? "";
   let pos = openMatch[0].length;
   let depth = 1;
   let inCode = false;
   let codeMark = "";
+  let bodyEnd = -1;
 
-  while (pos < src.length && depth > 0) {
+  while (pos <= src.length && depth > 0) {
     const lineEnd = src.indexOf("\n", pos);
-    if (lineEnd === -1) break;
-    const line = src.slice(pos, lineEnd).trim();
+    const hasLineEnd = lineEnd !== -1;
+    const currentLineEnd = hasLineEnd ? lineEnd : src.length;
+    const line = src.slice(pos, currentLineEnd).trim();
 
     const cm = line.match(/^(`{3,}|~{3,})/);
     if (cm) {
@@ -193,16 +195,18 @@ function matchAdmonitionBlock(src: string): { raw: string; tagName: string; para
 
     if (!inCode) {
       if (ADMONITION_NESTED_OPEN_RE.test(line)) depth++;
-      else if (ADMONITION_CLOSE_RE.test(line)) depth--;
+      else if (line === "!!!") {
+        depth--;
+        if (depth === 0) bodyEnd = pos;
+      }
     }
 
-    pos = lineEnd + 1;
+    pos = hasLineEnd ? lineEnd + 1 : src.length + 1;
   }
 
-  if (depth !== 0) return null;
+  if (depth !== 0 || bodyEnd === -1) return null;
 
-  const bodyEnd = src.lastIndexOf("!!!", pos - 1);
-  const body = src.slice(openMatch[0].length, bodyEnd).replace(/\n$/, "");
+  const body = src.slice(openMatch[0].length, bodyEnd).replace(/\r?\n$/, "");
   return { raw: src.slice(0, pos), tagName, params, body };
 }
 
@@ -545,7 +549,7 @@ export function registerMarkedExtensions(marked: typeof Marked) {
         name: "admonitionBangBlock",
         level: "block" as const,
         start(src: string) {
-          return src.match(/^!!!\s*(?:note|info|tip|success|warning|danger)\b/m)?.index;
+          return src.match(/^!!![ \t]*(?:note|info|tip|success|warning|danger)\b/m)?.index;
         },
         tokenizer(src: string) {
           const block = matchAdmonitionBlock(src);
