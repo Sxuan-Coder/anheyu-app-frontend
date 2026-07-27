@@ -109,6 +109,15 @@ export default function ImageAutoCompressEditor({ policyId }: Props) {
   }, [refresh]);
 
   const autoCompress = process.auto_compress ?? newEmptyAutoCompress();
+  const blockedByDefaultStyle = autoCompress.enabled && process.default_style !== "";
+  const autoCompressActive = autoCompress.enabled && process.enabled && !blockedByDefaultStyle;
+  const statusLabel = !autoCompress.enabled
+    ? "未启用"
+    : !process.enabled
+      ? "图片处理已关闭"
+      : blockedByDefaultStyle
+        ? "被默认样式覆盖"
+        : "已启用";
   const extInput = useMemo(() => process.apply_to_extensions.join(","), [process.apply_to_extensions]);
   const extErrors = fieldErrorsFor(errors, "image_process.apply_to_extensions");
   const autoErrors = {
@@ -173,14 +182,30 @@ export default function ImageAutoCompressEditor({ policyId }: Props) {
       <header className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-semibold">图片自动压缩</h2>
-          <Chip size="sm" variant="flat" color={autoCompress.enabled ? "success" : "default"}>
-            {autoCompress.enabled ? "已启用" : "未启用"}
+          <Chip size="sm" variant="flat" color={autoCompressActive ? "success" : blockedByDefaultStyle ? "warning" : "default"}>
+            {statusLabel}
           </Chip>
         </div>
         <p className="text-xs text-muted-foreground">
-          对没有命名样式、动态参数和默认样式命中的本地图片直链进行读取时压缩。
+          上传保留原图；未指定命名、动态或默认样式时，本地图片直链首次访问生成自动压缩结果，后续复用缓存。
         </p>
       </header>
+
+      {blockedByDefaultStyle && (
+        <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-warning-700">
+            默认样式“{process.default_style}”优先于自动压缩，因此当前自动压缩不会生效。
+          </p>
+          <Button
+            size="sm"
+            color="warning"
+            variant="flat"
+            onPress={() => setProcess(prev => ({ ...prev, default_style: "", enabled: true }))}
+          >
+            清除默认样式并启用
+          </Button>
+        </div>
+      )}
 
       <div className="flex items-center gap-4">
         <Switch isSelected={autoCompress.enabled} onValueChange={toggleAutoCompress}>
