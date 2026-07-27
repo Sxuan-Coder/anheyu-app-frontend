@@ -24,6 +24,10 @@ interface UploadArticleImageOptions {
   disableImageStyle?: boolean;
 }
 
+interface CreateArticleOptions {
+  idempotencyKey?: string;
+}
+
 export const postManagementApi = {
   /**
    * 获取管理端文章列表（服务端分页 + 筛选 + 搜索）
@@ -101,8 +105,10 @@ export const postManagementApi = {
    * 创建文章
    * POST /api/articles
    */
-  async createArticle(data: CreateArticleRequest): Promise<AdminArticle> {
-    const response = await apiClient.post<AdminArticle>("/api/articles", data);
+  async createArticle(data: CreateArticleRequest, options: CreateArticleOptions = {}): Promise<AdminArticle> {
+    const response = await apiClient.post<AdminArticle>("/api/articles", data, {
+      headers: options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : undefined,
+    });
 
     if (response.code === 200 && response.data) {
       return response.data;

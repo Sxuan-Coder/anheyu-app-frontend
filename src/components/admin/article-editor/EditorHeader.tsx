@@ -238,6 +238,8 @@ interface EditorHeaderProps {
   focusMode?: boolean;
   /** 切换专注模式 */
   onToggleFocusMode?: () => void;
+  /** 返回文章列表前由页面完成最后一次保存 */
+  onBack?: () => void | Promise<void>;
 }
 
 /** 格式化时间为 HH:mm:ss */
@@ -260,6 +262,7 @@ export function EditorHeader({
   articleUpdatedAt,
   focusMode = false,
   onToggleFocusMode,
+  onBack,
 }: EditorHeaderProps) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
@@ -352,7 +355,13 @@ export function EditorHeader({
         isIconOnly
         variant="light"
         size="sm"
-        onPress={() => router.push("/admin/post-management")}
+        onPress={() => {
+          if (onBack) {
+            void onBack();
+            return;
+          }
+          router.push("/admin/post-management");
+        }}
         aria-label="返回文章列表"
       >
         <ArrowLeft className="w-4 h-4" />

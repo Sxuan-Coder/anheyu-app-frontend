@@ -77,3 +77,33 @@ describe("postManagementApi.uploadArticleImage", () => {
     );
   });
 });
+
+describe("postManagementApi.createArticle", () => {
+  const originalAdapter = axiosInstance.defaults.adapter;
+
+  afterEach(() => {
+    axiosInstance.defaults.adapter = originalAdapter;
+  });
+
+  it("sends the stable Idempotency-Key supplied by the editor", async () => {
+    axiosInstance.defaults.adapter = async config => {
+      expect(config.method).toBe("post");
+      expect(config.url).toBe("/api/articles");
+      expect(config.headers.get("Idempotency-Key")).toBe("draft-key-1");
+
+      return createWrappedResponse(config, {
+        id: "article-id",
+      });
+    };
+
+    await postManagementApi.createArticle(
+      {
+        title: "",
+        content_md: "# draft",
+        content_html: "<h1>draft</h1>",
+        status: "DRAFT",
+      },
+      { idempotencyKey: "draft-key-1" }
+    );
+  });
+});

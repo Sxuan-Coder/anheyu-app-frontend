@@ -46,3 +46,6 @@ next-env.d.ts
 output
 .vscode
 tmp
+
+# log
+*.log

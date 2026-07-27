@@ -65,6 +65,8 @@ export function usePostRenderCell({ defaultCover, gravatarBaseUrl, onAction }: U
           const previewUrl = `/posts/${article.abbrlink || article.id}`;
           const cat = article.post_categories?.[0];
           const tag = article.post_tags?.[0];
+          // 标题为空列表展示默认文案
+          const displayTitle = article.title?.trim() || "无标题文章";
           return (
             <a
               href={previewUrl}
@@ -92,8 +94,8 @@ export function usePostRenderCell({ defaultCover, gravatarBaseUrl, onAction }: U
                 />
               </div>
               <div className="min-w-0 flex-1 overflow-hidden">
-                <p className="text-sm font-medium truncate group-hover/article:text-primary transition-colors" title={article.title}>
-                  {article.title}
+                <p className="text-sm font-medium truncate group-hover/article:text-primary transition-colors" title={displayTitle}>
+                  {displayTitle}
                 </p>
                 <div className="flex items-center gap-1 mt-0.5 min-w-0 overflow-hidden">
                   {cat && (

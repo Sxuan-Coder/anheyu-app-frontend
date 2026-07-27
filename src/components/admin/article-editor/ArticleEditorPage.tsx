@@ -14,7 +14,7 @@ import { EditorSidebar, TOCContent } from "./EditorSidebar";
 import { useArticleEditor } from "./use-article-editor";
 import { useArticleMeta } from "./use-article-meta";
 import { useAutoSave } from "./use-auto-save";
-import { useArticleForEdit, useCreateArticle, useUpdateArticle } from "@/hooks/queries/use-post-management";
+import { useArticleForEdit } from "@/hooks/queries/use-post-management";
 import { processHtmlForSave } from "@/lib/content-processor";
 import { turndownArticleMarkdown } from "@/lib/editor-tabs-export";
 import { registerCustomRules } from "@/lib/turndown-rules";
@@ -71,11 +71,31 @@ registerMarkedExtensions(marked);
 
 export function ArticleEditorPage({ articleId }: ArticleEditorPageProps) {
   const router = useRouter();
-  const isEditMode = !!articleId;
+
+  const isRouteEditMode = !!articleId;
+
+  /**
+   * draftArticleId 是当前页面实际正在编辑的文章 ID：
+   * 编辑已有文章时，初始值就是 articleId
+   * 新建文章时，初始值是 undefined
+   * 第一次自动保存创建草稿成功后，会被设置成后端返回的新 ID
+   */
+  const [draftArticleId, setDraftArticleId] = useState<string | undefined>(articleId);
+
+  // currentArticleId 是后续保存以及自动保存真正使用的 ID
+  const currentArticleId = draftArticleId;
+
+  useEffect(() => {
+    setDraftArticleId(articleId);
+  }, [articleId]);
+
+  const isEditMode = !!currentArticleId;
   const isAdmin = useAuthStore(state => state.user?.userGroupID === 1 || state.roles.includes("1"));
 
   // 编辑模式：加载文章数据
-  const { data: article, isLoading: isLoadingArticle } = useArticleForEdit(articleId ?? "", { enabled: isEditMode });
+  const { data: article, isLoading: isLoadingArticle } = useArticleForEdit(articleId ?? "", {
+    enabled: isRouteEditMode,
+  });
 
   // 标题状态
   const [title, setTitle] = useState("");
@@ -179,23 +199,28 @@ export function ArticleEditorPage({ articleId }: ArticleEditorPageProps) {
     staleTime: 1000 * 60 * 5,
   });
 
-  // Mutations
-  const createMutation = useCreateArticle();
-  const updateMutation = useUpdateArticle();
-  const isSaving = createMutation.isPending || updateMutation.isPending;
+  const handleArticleCreated = useCallback((id: string) => {
+    setDraftArticleId(id);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(window.history.state, "", `/admin/post-management/${id}/edit`);
+    }
+  }, []);
 
-  // 自动保存（仅编辑模式）
+  // 自动保存与手动保存共用同一个串行队列
   const {
     status: autoSaveStatus,
     lastSavedAt,
-    markAsSaved,
+    isSaving,
+    saveNow,
+    flushSave,
   } = useAutoSave({
-    articleId,
+    articleId: currentArticleId,
+    onArticleCreated: handleArticleCreated,
     editor,
     title,
     getSubmitData,
     interval: 30000,
-    enabled: isEditMode,
+    enabled: true,  // 新建页也启用自动保存，真正是否创建草稿由 useAutoSave 内部判断（标题和内容都为空不保存）
     editorMode,
     sourceContent,
   });
@@ -233,74 +258,58 @@ export function ArticleEditorPage({ articleId }: ArticleEditorPageProps) {
   }, [article, editor]);
 
   // 保存文章
-  const handleSave = () => {
+  const handleSave = async () => {
     const currentTitle = title.trim();
+    const currentStatus = meta.status;
 
-    if (!currentTitle) {
-      addToast({ title: "请输入文章标题", color: "warning" });
+    if (currentStatus !== "DRAFT" && !currentTitle) {
+      addToast({ title: "发布文章前请输入标题", color: "warning" });
       return;
     }
 
-    let html: string;
-    let markdown: string;
-
-    if (editorMode === "visual") {
-      const rawHtml = editor?.getHTML() ?? "";
-      html = processHtmlForSave(rawHtml);
-      markdown = turndownArticleMarkdown(editor, turndownService, html);
-    } else if (editorMode === "html") {
-      html = processHtmlForSave(sourceContent);
-      markdown = turndownService.turndown(html);
-    } else {
-      markdown = sourceContent;
-      html = processHtmlForSave(fixTaskListHtml(marked.parse(sourceContent, { async: false }) as string));
-    }
-
-    // 合并元数据
-    const metaData = getSubmitData();
-
-    if (isEditMode && articleId) {
-      updateMutation.mutate(
-        {
-          id: articleId,
-          data: {
-            title: currentTitle,
-            content_html: html,
-            content_md: markdown,
-            ...metaData,
-          },
-        },
-        {
-          onSuccess: () => {
-            markAsSaved();
-            addToast({ title: "文章已更新", color: "success" });
-          },
-          onError: error => {
-            addToast({ title: "更新失败", description: error.message, color: "danger" });
-          },
-        }
-      );
-    } else {
-      createMutation.mutate(
-        {
-          title: currentTitle,
-          content_html: html,
-          content_md: markdown,
-          status: meta.status,
-          ...metaData,
-        },
-        {
-          onSuccess: () => {
-            addToast({ title: "文章已发布", color: "success" });
-            router.push("/admin/post-management");
-          },
-          onError: error => {
-            addToast({ title: "发布失败", description: error.message, color: "danger" });
-          },
-        }
-      );
+    const wasNewArticle = !currentArticleId;
+    try {
+      const outcome = await saveNow();
+      if (wasNewArticle && !outcome.id) {
+        addToast({
+          title: "没有可保存的内容",
+          color: "warning",
+        });
+        return;
+      }
+      addToast({
+        title:
+          currentStatus === "DRAFT"
+            ? "草稿已保存"
+            : wasNewArticle
+              ? "文章已发布"
+              : "文章已更新",
+        color: "success",
+      });
+      if (wasNewArticle) {
+        router.push("/admin/post-management");
+      }
+    } catch (error) {
+      addToast({
+        title: wasNewArticle ? "发布失败" : "更新失败",
+        description: error instanceof Error ? error.message : "保存文章失败",
+        color: "danger",
+      });
     }
   };
+
+  const handleBack = useCallback(async () => {
+    try {
+      await flushSave();
+      router.push("/admin/post-management");
+    } catch (error) {
+      addToast({
+        title: "保存失败，已留在当前页面",
+        description: error instanceof Error ? error.message : "请重试后再离开",
+        color: "danger",
+      });
+    }
+  }, [flushSave, router]);
 
   const getBodyPlainTextForSummary = useCallback(() => {
     if (editorMode === "visual" && editor && !editor.isDestroyed) {
@@ -334,13 +343,14 @@ export function ArticleEditorPage({ articleId }: ArticleEditorPageProps) {
           isEditMode={isEditMode}
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          articleId={articleId}
+          articleId={currentArticleId}
           isDoc={meta.is_doc}
           autoSaveStatus={autoSaveStatus}
           lastSavedAt={lastSavedAt}
           articleUpdatedAt={article?.updated_at}
           focusMode={focusMode}
           onToggleFocusMode={toggleFocusMode}
+          onBack={handleBack}
         />
       )}
 
