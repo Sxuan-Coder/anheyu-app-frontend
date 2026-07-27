@@ -11,6 +11,14 @@ function quoteTagParam(value: string): string {
   return `"${value.replace(/"/g, "&quot;")}"`;
 }
 
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 export function registerCustomRules(td: TurndownService) {
   // --- 图片（含 figcaption 时把图片描述写入 markdown title） ---
   // 让 <figure><img>...<figcaption>X</figcaption></figure> 转为 ![alt](src "X")，
@@ -73,7 +81,11 @@ export function registerCustomRules(td: TurndownService) {
           const el = cell as HTMLElement;
           const isHeader = cell.nodeName === "TH";
           const align = el.style.textAlign || el.getAttribute("align") || "";
-          const text = (el.textContent || "").trim().replace(/\|/g, "\\|").replace(/\n/g, " ");
+          const text = td
+            .turndown(el.innerHTML)
+            .trim()
+            .replace(/\|/g, "\\|")
+            .replace(/\n+/g, " ");
           return { text, isHeader, align };
         });
         matrix.push(rowData);
@@ -672,6 +684,35 @@ export function registerCustomRules(td: TurndownService) {
   td.addRule("inlinePassword", {
     filter: (node) => node.nodeName === "SPAN" && (node as HTMLElement).classList.contains("inline-password"),
     replacement: (content) => `{psw}${content}{/psw}`,
+  });
+
+  // --- Tiptap 原生文字颜色 ---
+  // Markdown 没有文字颜色语法；保留最小原始 HTML，确保仅有 content_md 时仍可恢复。
+  td.addRule("textColor", {
+    filter: (node) => {
+      if (node.nodeName !== "SPAN") return false;
+      const el = node as HTMLElement;
+      return !!el.style.color && !Array.from(el.classList).some(className => className.startsWith("inline-"));
+    },
+    replacement: (content, node) => {
+      const color = escapeHtmlAttribute((node as HTMLElement).style.color);
+      return `<span style="color: ${color}">${content}</span>`;
+    },
+  });
+
+  // --- Tiptap 段落/标题对齐 ---
+  // 用原始 HTML 表达 Markdown 不支持的块级对齐，marked 会原样恢复。
+  td.addRule("textAlign", {
+    filter: (node) => {
+      if (!/^(P|H[1-6])$/.test(node.nodeName)) return false;
+      return ["left", "center", "right", "justify"].includes((node as HTMLElement).style.textAlign);
+    },
+    replacement: (_content, node) => {
+      const el = node as HTMLElement;
+      const tagName = el.tagName.toLowerCase();
+      const textAlign = escapeHtmlAttribute(el.style.textAlign);
+      return `\n\n<${tagName} style="text-align: ${textAlign}">${el.innerHTML}</${tagName}>\n\n`;
+    },
   });
 
   // --- 块级数学公式 (TipTap math-block) ---
