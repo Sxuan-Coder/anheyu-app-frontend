@@ -14,7 +14,7 @@ import { EditorSidebar, TOCContent } from "./EditorSidebar";
 import { useArticleEditor } from "./use-article-editor";
 import { useArticleMeta } from "./use-article-meta";
 import { useAutoSave } from "./use-auto-save";
-import { useArticleForEdit, useCreateArticle, useUpdateArticle } from "@/hooks/queries/use-post-management";
+import { useArticleForEdit } from "@/hooks/queries/use-post-management";
 import { processHtmlForSave } from "@/lib/content-processor";
 import { turndownArticleMarkdown } from "@/lib/editor-tabs-export";
 import { registerCustomRules } from "@/lib/turndown-rules";
@@ -199,19 +199,23 @@ export function ArticleEditorPage({ articleId }: ArticleEditorPageProps) {
     staleTime: 1000 * 60 * 5,
   });
 
-  // Mutations
-  const createMutation = useCreateArticle();
-  const updateMutation = useUpdateArticle();
-  const isSaving = createMutation.isPending || updateMutation.isPending;
+  const handleArticleCreated = useCallback((id: string) => {
+    setDraftArticleId(id);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(window.history.state, "", `/admin/post-management/${id}/edit`);
+    }
+  }, []);
 
-  // 自动保存（仅编辑模式）
+  // 自动保存与手动保存共用同一个串行队列
   const {
     status: autoSaveStatus,
     lastSavedAt,
-    markAsSaved,
+    isSaving,
+    saveNow,
+    flushSave,
   } = useAutoSave({
     articleId: currentArticleId,
-    onArticleCreated: setDraftArticleId,
+    onArticleCreated: handleArticleCreated,
     editor,
     title,
     getSubmitData,
@@ -254,7 +258,7 @@ export function ArticleEditorPage({ articleId }: ArticleEditorPageProps) {
   }, [article, editor]);
 
   // 保存文章
-  const handleSave = () => {
+  const handleSave = async () => {
     const currentTitle = title.trim();
     const currentStatus = meta.status;
 
@@ -263,73 +267,49 @@ export function ArticleEditorPage({ articleId }: ArticleEditorPageProps) {
       return;
     }
 
-    let html: string;
-    let markdown: string;
-
-    if (editorMode === "visual") {
-      const rawHtml = editor?.getHTML() ?? "";
-      html = processHtmlForSave(rawHtml);
-      markdown = turndownArticleMarkdown(editor, turndownService, html);
-    } else if (editorMode === "html") {
-      html = processHtmlForSave(sourceContent);
-      markdown = turndownService.turndown(html);
-    } else {
-      markdown = sourceContent;
-      html = processHtmlForSave(fixTaskListHtml(marked.parse(sourceContent, { async: false }) as string));
-    }
-
-    // 合并元数据
-    const metaData = getSubmitData();
-
-    if (currentArticleId) {
-      updateMutation.mutate(
-        {
-          id: currentArticleId,
-          data: {
-            title: currentTitle,
-            content_html: html,
-            content_md: markdown,
-            ...metaData,
-          },
-        },
-        {
-          onSuccess: () => {
-            markAsSaved();
-            addToast({
-              title: meta.status === "DRAFT" ? "草稿已保存" : "文章已更新",
-              color: "success",
-            });
-          },
-          onError: error => {
-            addToast({ title: "更新失败", description: error.message, color: "danger" });
-          },
-        }
-      );
-    } else {
-      createMutation.mutate(
-        {
-          title: currentTitle,
-          content_html: html,
-          content_md: markdown,
-          status: meta.status,
-          ...metaData,
-        },
-        {
-          onSuccess: created => {
-            setDraftArticleId(created.id);
-            addToast({
-              title: meta.status === "DRAFT" ? "草稿已保存" : "文章已发布",
-              color: "success",
-            });
-            router.push("/admin/post-management");
-          },
-          onError: error => {
-            addToast({ title: "发布失败", description: error.message, color: "danger" });
-          },
-        }
-      );
+    const wasNewArticle = !currentArticleId;
+    try {
+      const outcome = await saveNow();
+      if (wasNewArticle && !outcome.id) {
+        addToast({
+          title: "没有可保存的内容",
+          color: "warning",
+        });
+        return;
+      }
+      addToast({
+        title:
+          currentStatus === "DRAFT"
+            ? "草稿已保存"
+            : wasNewArticle
+              ? "文章已发布"
+              : "文章已更新",
+        color: "success",
+      });
+      if (wasNewArticle) {
+        router.push("/admin/post-management");
+      }
+    } catch (error) {
+      addToast({
+        title: wasNewArticle ? "发布失败" : "更新失败",
+        description: error instanceof Error ? error.message : "保存文章失败",
+        color: "danger",
+      });
     }
   };
+
+  const handleBack = useCallback(async () => {
+    try {
+      await flushSave();
+      router.push("/admin/post-management");
+    } catch (error) {
+      addToast({
+        title: "保存失败，已留在当前页面",
+        description: error instanceof Error ? error.message : "请重试后再离开",
+        color: "danger",
+      });
+    }
+  }, [flushSave, router]);
 
   const getBodyPlainTextForSummary = useCallback(() => {
     if (editorMode === "visual" && editor && !editor.isDestroyed) {
@@ -370,6 +350,7 @@ export function ArticleEditorPage({ articleId }: ArticleEditorPageProps) {
           articleUpdatedAt={article?.updated_at}
           focusMode={focusMode}
           onToggleFocusMode={toggleFocusMode}
+          onBack={handleBack}
         />
       )}
 

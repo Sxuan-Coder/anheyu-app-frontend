@@ -1,14 +1,19 @@
 "use client";
 
-import { useRef, useEffect, useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { Editor } from "@tiptap/react";
+import axios from "axios";
+import TurndownService from "turndown";
+import { marked } from "marked";
 import { postManagementApi } from "@/lib/api/post-management";
 import { processHtmlForSave } from "@/lib/content-processor";
-import TurndownService from "turndown";
 import { turndownArticleMarkdown } from "@/lib/editor-tabs-export";
 import { registerCustomRules } from "@/lib/turndown-rules";
-import { marked } from "marked";
 import { fixTaskListHtml } from "@/lib/marked-extensions";
+import { tokenManager } from "@/lib/api/client";
+import { postManagementKeys } from "@/hooks/queries/use-post-management";
+import type { CreateArticleRequest, UpdateArticleRequest } from "@/types/post-management";
 import type { EditorMode } from "./EditorToolbar";
 
 /** 自动保存状态 */
@@ -35,15 +40,40 @@ interface UseAutoSaveOptions {
   sourceContent?: string;
 }
 
+export interface SaveOutcome {
+  id?: string;
+  created: boolean;
+  saved: boolean;
+}
+
 interface UseAutoSaveReturn {
   /** 当前自动保存状态 */
   status: AutoSaveStatus;
   /** 上次保存的时间 */
   lastSavedAt: Date | null;
-  /** 手动触发保存 */
-  triggerSave: () => void;
-  /** 标记为已保存（供手动保存成功后调用，同步状态和内容哈希） */
-  markAsSaved: () => void;
+  /** 自动或手动保存队列中是否仍有任务 */
+  isSaving: boolean;
+  /** 手动触发一次自动保存 */
+  triggerSave: () => Promise<SaveOutcome>;
+  /** 用户点击保存/发布，和自动保存共用同一串行队列 */
+  saveNow: () => Promise<SaveOutcome>;
+  /** 离开编辑器前保存最新快照 */
+  flushSave: () => Promise<SaveOutcome>;
+}
+
+interface SaveSnapshot {
+  data: CreateArticleRequest;
+  hash: string;
+  isEmptyContent: boolean;
+}
+
+type SaveIntent = "auto" | "manual";
+
+interface PendingCreate {
+  idempotencyKey: string;
+  intent: SaveIntent;
+  payload: CreateArticleRequest;
+  hash: string;
 }
 
 /** HTML -> Markdown 转换器（单例） */
@@ -54,11 +84,42 @@ const turndownService = new TurndownService({
 });
 registerCustomRules(turndownService);
 
+const AxiosErrorCodes = {
+  timeout: "ETIMEDOUT",
+  aborted: "ECONNABORTED",
+} as const;
+
+function createIdempotencyKey(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `article-draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function hasUnknownCreateResult(error: unknown): boolean {
+  const transportError = axios.isAxiosError(error)
+    ? error
+    : error instanceof Error && axios.isAxiosError(error.cause)
+      ? error.cause
+      : null;
+  if (!transportError) return false;
+
+  const responseStatus = transportError.response?.status;
+  return (
+    !transportError.response ||
+    transportError.code === AxiosErrorCodes.timeout ||
+    transportError.code === AxiosErrorCodes.aborted ||
+    responseStatus === 408 ||
+    responseStatus === 429 ||
+    (responseStatus !== undefined && responseStatus >= 500)
+  );
+}
+
 /**
  * 自动保存 Hook
  *
- * 在编辑模式下，定期检测内容变化并自动保存。
- * 使用内容哈希判断是否有变化，避免无意义的保存。
+ * 自动保存、手动保存和离开前刷新共用同一个串行队列。新文章创建在结果未知时
+ * 会保留原始请求体与 Idempotency-Key，下一次保存先安全重放该请求。
  */
 export function useAutoSave({
   articleId,
@@ -71,229 +132,299 @@ export function useAutoSave({
   editorMode = "visual",
   sourceContent = "",
 }: UseAutoSaveOptions): UseAutoSaveReturn {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<AutoSaveStatus>("idle");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // 用于追踪上次保存的内容哈希，避免重复保存
-  const lastContentHashRef = useRef<string>("");
-  const savingRef = useRef(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const autoCreatedDraftRef = useRef(false);
-
-  /**
-   * 当前自动保存使用的文章 ID
-   * 编辑模式下来自 props.articleId；
-   * 新建模式下，第一次 createArticle 成功后写入这里
-   */
+  const lastContentHashRef = useRef("");
   const activeArticleIdRef = useRef<string | undefined>(articleId);
+  const autoCreatedDraftRef = useRef(false);
+  const pendingCreateRef = useRef<PendingCreate | null>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingSaveCountRef = useRef(0);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     activeArticleIdRef.current = articleId;
   }, [articleId]);
 
-  /** 计算内容的简单哈希 */
-  const computeHash = useCallback((t: string, html: string) => {
-    // 使用简单的字符串拼接作为哈希（足以检测变化）
-    return `${t}::${html.length}::${html.slice(0, 200)}::${html.slice(-200)}`;
-  }, []);
-
-  /** 执行保存 */
-  const doSave = useCallback(async () => {
-    if (savingRef.current) return;
-
-    let contentForHash: string;
-    let isEmptyContent = false;
-
-    if (editorMode === "visual") {
-      if (!editor || editor.isDestroyed) return;
-
-      contentForHash = editor.getHTML();
-
-      isEmptyContent = editor.isEmpty;
-    } else {
-      contentForHash = sourceContent;
-
-      // HTML / Markdown 源码模式下，用 trim 判断是否为空
-      isEmptyContent = sourceContent.trim().length === 0;
-    }
-
-    const trimmedTitle = title.trim();
-
-    // 新建文章：标题和正文都为空时，不创建空草稿
-    if (!activeArticleIdRef.current && !trimmedTitle && isEmptyContent) {
-      return;
-    }
-
-    const hash = computeHash(trimmedTitle, contentForHash);
-    if (hash === lastContentHashRef.current) return;
-
-    savingRef.current = true;
-    setStatus("saving");
-
-    try {
+  const buildSnapshot = useCallback(
+    (intent: SaveIntent): SaveSnapshot | null => {
+      let isEmptyContent: boolean;
       let html: string;
       let markdown: string;
 
       if (editorMode === "visual") {
-        html = processHtmlForSave(contentForHash);
+        if (!editor || editor.isDestroyed) return null;
+        const contentForSave = editor.getHTML();
+        isEmptyContent = editor.isEmpty;
+        html = processHtmlForSave(contentForSave);
         markdown = turndownArticleMarkdown(editor, turndownService, html);
       } else if (editorMode === "html") {
+        isEmptyContent = sourceContent.trim().length === 0;
         html = processHtmlForSave(sourceContent);
         markdown = turndownService.turndown(html);
       } else {
+        isEmptyContent = sourceContent.trim().length === 0;
         markdown = sourceContent;
         html = processHtmlForSave(fixTaskListHtml(marked.parse(sourceContent, { async: false }) as string));
       }
 
-      const metaData = getSubmitData();
       const targetArticleId = activeArticleIdRef.current;
+      const data = {
+        ...getSubmitData(),
+        title: title.trim(),
+        content_html: html,
+        content_md: markdown,
+      } as CreateArticleRequest;
+
+      if (intent === "auto" && (!targetArticleId || autoCreatedDraftRef.current)) {
+        data.status = "DRAFT";
+        delete data.scheduled_at;
+      }
+
+      return {
+        data,
+        hash: JSON.stringify(data),
+        isEmptyContent,
+      };
+    },
+    [editor, editorMode, getSubmitData, sourceContent, title]
+  );
+
+  const invalidateArticleQueries = useCallback(
+    async (id: string) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: postManagementKeys.lists(), refetchType: "all" }),
+        queryClient.invalidateQueries({ queryKey: postManagementKeys.detail(id), refetchType: "all" }),
+        queryClient.invalidateQueries({ queryKey: postManagementKeys.editDetail(id), refetchType: "all" }),
+      ]);
+    },
+    [queryClient]
+  );
+
+  const finishCreatedArticle = useCallback(
+    async (createdId: string, pending: PendingCreate) => {
+      activeArticleIdRef.current = createdId;
+      autoCreatedDraftRef.current = pending.intent === "auto" && pending.payload.status === "DRAFT";
+      pendingCreateRef.current = null;
+      lastContentHashRef.current = pending.hash;
+      setLastSavedAt(new Date());
+      onArticleCreated?.(createdId);
+      await invalidateArticleQueries(createdId);
+    },
+    [invalidateArticleQueries, onArticleCreated]
+  );
+
+  const replayPendingCreate = useCallback(async (): Promise<string | undefined> => {
+    const pending = pendingCreateRef.current;
+    if (!pending) return undefined;
+
+    try {
+      const created = await postManagementApi.createArticle(pending.payload, {
+        idempotencyKey: pending.idempotencyKey,
+      });
+      await finishCreatedArticle(created.id, pending);
+      return created.id;
+    } catch (error) {
+      if (!hasUnknownCreateResult(error)) {
+        pendingCreateRef.current = null;
+      }
+      throw error;
+    }
+  }, [finishCreatedArticle]);
+
+  const performSave = useCallback(
+    async (intent: SaveIntent): Promise<SaveOutcome> => {
+      if (pendingCreateRef.current) {
+        const createdId = await replayPendingCreate();
+        const latestSnapshot = buildSnapshot(intent);
+        if (!createdId || !latestSnapshot || latestSnapshot.hash === lastContentHashRef.current) {
+          if (createdId && intent === "manual") {
+            autoCreatedDraftRef.current = false;
+          }
+          return { id: createdId, created: true, saved: true };
+        }
+
+        await postManagementApi.updateArticle(createdId, latestSnapshot.data as UpdateArticleRequest);
+        if (intent === "manual") {
+          autoCreatedDraftRef.current = false;
+        }
+        lastContentHashRef.current = latestSnapshot.hash;
+        setLastSavedAt(new Date());
+        await invalidateArticleQueries(createdId);
+        return { id: createdId, created: true, saved: true };
+      }
+
+      const snapshot = buildSnapshot(intent);
+      if (!snapshot) {
+        return { id: activeArticleIdRef.current, created: false, saved: false };
+      }
+
+      const targetArticleId = activeArticleIdRef.current;
+      if (!targetArticleId && !snapshot.data.title && snapshot.isEmptyContent) {
+        return { created: false, saved: false };
+      }
+      if (snapshot.hash === lastContentHashRef.current) {
+        return { id: targetArticleId, created: false, saved: false };
+      }
 
       if (targetArticleId) {
-        const updateData: Record<string, unknown> = {
-          title: trimmedTitle,
-          content_html: html,
-          content_md: markdown,
-          ...metaData,
-        };
-        if (autoCreatedDraftRef.current) {
-          updateData.status = "DRAFT";
+        await postManagementApi.updateArticle(targetArticleId, snapshot.data as UpdateArticleRequest);
+        if (intent === "manual") {
+          autoCreatedDraftRef.current = false;
         }
-        await postManagementApi.updateArticle(targetArticleId, updateData);
-      } else {
-        // 新建文章还没有 ID 第一次自动保存时创建草稿
-        const created = await postManagementApi.createArticle({
-          ...metaData,
-          title: trimmedTitle,  // 标题允许为空字符串
-          content_html: html,
-          content_md: markdown,
-          status: "DRAFT",
+        lastContentHashRef.current = snapshot.hash;
+        setLastSavedAt(new Date());
+        await invalidateArticleQueries(targetArticleId);
+        return { id: targetArticleId, created: false, saved: true };
+      }
+
+      const pending: PendingCreate = {
+        idempotencyKey: createIdempotencyKey(),
+        intent,
+        payload: snapshot.data,
+        hash: snapshot.hash,
+      };
+      pendingCreateRef.current = pending;
+
+      try {
+        const created = await postManagementApi.createArticle(pending.payload, {
+          idempotencyKey: pending.idempotencyKey,
         });
-
-        activeArticleIdRef.current = created.id;
-        autoCreatedDraftRef.current = true;
-
-        // ArticleEditorPage 保存此 ID
-        onArticleCreated?.(created.id);
+        await finishCreatedArticle(created.id, pending);
+        return { id: created.id, created: true, saved: true };
+      } catch (error) {
+        if (!hasUnknownCreateResult(error)) {
+          pendingCreateRef.current = null;
+        }
+        throw error;
       }
+    },
+    [buildSnapshot, finishCreatedArticle, invalidateArticleQueries, replayPendingCreate]
+  );
 
-      lastContentHashRef.current = hash;
-      setLastSavedAt(new Date());
-      setStatus("saved");
-    } catch {
-      setStatus("error");
-    } finally {
-      savingRef.current = false;
+  const enqueueSave = useCallback(
+    (intent: SaveIntent): Promise<SaveOutcome> => {
+      pendingSaveCountRef.current += 1;
+      setIsSaving(true);
+      setStatus("saving");
+
+      const task = saveQueueRef.current.then(() => performSave(intent));
+      saveQueueRef.current = task.then(
+        () => undefined,
+        () => undefined
+      );
+
+      const finish = (nextStatus: AutoSaveStatus) => {
+        pendingSaveCountRef.current = Math.max(0, pendingSaveCountRef.current - 1);
+        if (pendingSaveCountRef.current === 0) {
+          setIsSaving(false);
+          setStatus(nextStatus);
+        }
+      };
+      task.then(
+        outcome => finish(outcome.saved ? "saved" : "idle"),
+        () => finish("error")
+      );
+
+      return task;
+    },
+    [performSave]
+  );
+
+  const triggerSave = useCallback(() => enqueueSave("auto"), [enqueueSave]);
+  const saveNow = useCallback(() => enqueueSave("manual"), [enqueueSave]);
+  const flushSave = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
     }
-  }, [editor, title, getSubmitData, computeHash, editorMode, sourceContent, onArticleCreated]);
+    return enqueueSave("auto");
+  }, [enqueueSave]);
 
-  /** 手动触发保存 */
-  const triggerSave = useCallback(() => {
-    doSave();
-  }, [doSave]);
-
-  /** 标记为已保存（供手动保存成功后调用） */
-  const markAsSaved = useCallback(() => {
-    if (editorMode === "visual") {
-      if (editor && !editor.isDestroyed) {
-        lastContentHashRef.current = computeHash(title, editor.getHTML());
-      }
-    } else {
-      lastContentHashRef.current = computeHash(title, sourceContent);
+  const scheduleDebouncedSave = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
     }
-    setLastSavedAt(new Date());
-    setStatus("saved");
-  }, [editor, title, computeHash, editorMode, sourceContent]);
+    debounceTimerRef.current = setTimeout(() => {
+      debounceTimerRef.current = null;
+      void triggerSave().catch(() => undefined);
+    }, 3000);
+  }, [triggerSave]);
 
-  // 定时器：定期检测并保存
   useEffect(() => {
     if (!enabled) return;
-
-    timerRef.current = setInterval(() => {
-      doSave();
+    const timer = setInterval(() => {
+      void triggerSave().catch(() => undefined);
     }, interval);
+    return () => clearInterval(timer);
+  }, [enabled, interval, triggerSave]);
 
+  useEffect(() => {
+    if (!enabled || editorMode !== "visual" || !editor || editor.isDestroyed) return;
+    editor.on("update", scheduleDebouncedSave);
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
+      editor.off("update", scheduleDebouncedSave);
     };
-  }, [enabled, interval, doSave]);
+  }, [editor, editorMode, enabled, scheduleDebouncedSave]);
 
-  // 输入停止 3 秒后自动保存
   useEffect(() => {
     if (!enabled) return;
-    if (editorMode !== "visual") return;
-    if (!editor || editor.isDestroyed) return;
-
-    const scheduleSave = () => {
-      // 如果用户持续输入，就清掉上一次定时器，重新计时
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-
-      // 用户停止输入 3 秒后保存
-      debounceTimerRef.current = setTimeout(() => {
-        doSave();
-      }, 3000);
-    };
-
-    // Tiptap 编辑器内容变化时触发
-    editor.on("update", scheduleSave);
-
+    scheduleDebouncedSave();
     return () => {
-      // 组件卸载或 editor 变化时，移除监听，避免重复绑定
-      editor.off("update", scheduleSave);
-
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;
       }
     };
-  }, [enabled, editor, editorMode, doSave]);
+  }, [editorMode, enabled, scheduleDebouncedSave, sourceContent, title]);
 
-  // 页面卸载前尝试保存
   useEffect(() => {
     if (!enabled) return;
 
-    const handleBeforeUnload = () => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      const snapshot = buildSnapshot("auto");
+      if (!snapshot || snapshot.hash === lastContentHashRef.current) return;
+
       const targetArticleId = activeArticleIdRef.current;
-
-      // 没有 ID 的新文章，不在 unload 时创建，第一次创建交正常自动保存定时器做
-      if (!targetArticleId) return;
-
-      let contentForHash: string;
-      if (editorMode === "visual") {
-        if (!editor || editor.isDestroyed) return;
-        contentForHash = editor.getHTML();
-      } else {
-        contentForHash = sourceContent;
+      if (!targetArticleId) {
+        if (!snapshot.data.title && snapshot.isEmptyContent) return;
+        event.preventDefault();
+        event.returnValue = "";
+        return;
       }
 
-      const hash = computeHash(title, contentForHash);
-      if (hash !== lastContentHashRef.current) {
-        let html: string;
-        let markdown: string;
-        if (editorMode === "visual") {
-          html = processHtmlForSave(contentForHash);
-          markdown = turndownArticleMarkdown(editor, turndownService, html);
-        } else if (editorMode === "html") {
-          html = processHtmlForSave(sourceContent);
-          markdown = turndownService.turndown(html);
-        } else {
-          markdown = sourceContent;
-          html = processHtmlForSave(fixTaskListHtml(marked.parse(sourceContent, { async: false }) as string));
-        }
-        const data = JSON.stringify({ title: title.trim(), content_html: html, content_md: markdown });
-        navigator.sendBeacon?.(`/api/articles/${targetArticleId}`, new Blob([data], { type: "application/json" }));
+      const token = tokenManager.getToken();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
       }
+
+      event.preventDefault();
+      event.returnValue = "";
+      void fetch(`/api/articles/${targetArticleId}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(snapshot.data),
+        credentials: "same-origin",
+        keepalive: true,
+      }).catch(() => undefined);
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [enabled, editor, title, computeHash, editorMode, sourceContent]);
+  }, [buildSnapshot, enabled]);
 
-  return { status, lastSavedAt, triggerSave, markAsSaved };
+  return {
+    status,
+    lastSavedAt,
+    isSaving,
+    triggerSave,
+    saveNow,
+    flushSave,
+  };
 }
