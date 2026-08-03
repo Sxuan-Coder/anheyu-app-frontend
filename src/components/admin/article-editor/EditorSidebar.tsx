@@ -45,6 +45,7 @@ import { useDocSeriesList } from "@/hooks/queries/use-doc-series";
 import { articleApi } from "@/lib/api/article";
 import { postManagementApi } from "@/lib/api/post-management";
 import { articleAiApi } from "@/lib/api/article-ai";
+import { buildCoverSourcePrompt } from "@/constants/ai-cover-prompt";
 import { getErrorMessage } from "@/lib/api/client";
 import type { Editor } from "@tiptap/react";
 import type { ArticleStatus } from "@/types/post-management";
@@ -958,7 +959,7 @@ function SettingsContent({
     onUpdateField,
   ]);
 
-  // AI 一键配图
+  // AI 一键配图：先自动补齐摘要，再拼好「海报模板 + 文章信息」源提示词，交给后端两步生成（文本模型填模板 → 图像模型出图）
   const handleAICover = useCallback(async () => {
     const title = (articleTitle ?? "").trim();
     const content = getCompleteHtmlForAISummary?.() ?? getBodyPlainTextForSummary?.() ?? "";
@@ -968,7 +969,37 @@ function SettingsContent({
     }
     setIsGeneratingCover(true);
     try {
-      const res = await articleAiApi.cover({ title, content });
+      // 摘要为空时先自动生成（源提示词需要带摘要）
+      let summary = (meta.summaries[0] ?? "").trim();
+      if (!summary) {
+        const summaryRes = await articleAiApi.summary({ title, content });
+        summary = summaryRes.data?.summary?.trim() ?? "";
+        if (summary) {
+          if (editorVariant === "app") {
+            onUpdateField("summaries", [summary]);
+          } else {
+            const arr = [...meta.summaries];
+            const emptyIdx = arr.findIndex(s => !s.trim());
+            if (emptyIdx >= 0) {
+              arr[emptyIdx] = summary;
+            } else {
+              arr.unshift(summary);
+            }
+            onUpdateField("summaries", arr.slice(0, maxSummarySlots));
+          }
+        }
+      }
+
+      // 分类/标签 ID → 名称映射
+      const categoryName = meta.post_category_ids
+        .map(id => categories.find(c => c.id === id)?.name)
+        .find(Boolean);
+      const tagNames = meta.post_tag_ids
+        .map(id => tags.find(t => t.id === id)?.name)
+        .filter((n): n is string => !!n);
+
+      const sourcePrompt = buildCoverSourcePrompt({ title, category: categoryName, tags: tagNames, summary });
+      const res = await articleAiApi.cover({ prompt: sourcePrompt });
       const url = res.data?.url;
       if (!url) {
         addToast({ title: "AI 未返回有效图片", color: "warning" });
@@ -981,7 +1012,19 @@ function SettingsContent({
     } finally {
       setIsGeneratingCover(false);
     }
-  }, [articleTitle, getCompleteHtmlForAISummary, getBodyPlainTextForSummary, onUpdateField]);
+  }, [
+    articleTitle,
+    getCompleteHtmlForAISummary,
+    getBodyPlainTextForSummary,
+    meta.summaries,
+    meta.post_category_ids,
+    meta.post_tag_ids,
+    categories,
+    tags,
+    editorVariant,
+    maxSummarySlots,
+    onUpdateField,
+  ]);
 
   return (
     <>

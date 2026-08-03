@@ -4,9 +4,16 @@
  */
 import { apiClient } from "./client";
 
-export interface ArticleAIRequest {
+export interface ArticleAISummaryRequest {
   title: string;
   content: string;
+  /** 可选：指定使用哪个 ai_profiles 配置 ID */
+  profile_id?: string;
+}
+
+export interface ArticleAICoverRequest {
+  /** 前端拼接好的「海报模板 + 文章信息」源提示词 */
+  prompt: string;
   /** 可选：指定使用哪个 ai_profiles 配置 ID */
   profile_id?: string;
 }
@@ -22,11 +29,11 @@ export interface ArticleAICoverResponse {
 
 export const articleAiApi = {
   /** 生成 ≤300 字摘要 */
-  summary(payload: ArticleAIRequest) {
+  summary(payload: ArticleAISummaryRequest) {
     return apiClient.post<ArticleAISummaryResponse>("/api/articles/ai-summary", payload);
   },
   /** 生成封面图并入库，返回直链 URL */
-  cover(payload: ArticleAIRequest) {
+  cover(payload: ArticleAICoverRequest) {
     return apiClient.post<ArticleAICoverResponse>("/api/articles/ai-cover", payload);
   },
 };
