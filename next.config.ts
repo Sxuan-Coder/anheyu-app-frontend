@@ -19,6 +19,8 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
   experimental: {
+    // AI 配图两步生成耗时可达数分钟，放宽 dev 代理超时（默认 30s），需 > 后端 chat 60s + image 180s 上限
+    proxyTimeout: 300000,
     staleTimes: {
       dynamic: 30,
       static: 180,

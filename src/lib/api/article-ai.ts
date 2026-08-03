@@ -27,6 +27,9 @@ export interface ArticleAICoverResponse {
   file_id: string;
 }
 
+/** 配图两步生成（文本模型填模板 + 图像模型出图）耗时较长，覆盖默认 30s 超时 */
+const AI_COVER_TIMEOUT = 300000; // 5 分钟（后端 chat 60s + image 180s 上限，再留余量）
+
 export const articleAiApi = {
   /** 生成 ≤300 字摘要 */
   summary(payload: ArticleAISummaryRequest) {
@@ -34,6 +37,8 @@ export const articleAiApi = {
   },
   /** 生成封面图并入库，返回直链 URL */
   cover(payload: ArticleAICoverRequest) {
-    return apiClient.post<ArticleAICoverResponse>("/api/articles/ai-cover", payload);
+    return apiClient.post<ArticleAICoverResponse>("/api/articles/ai-cover", payload, {
+      timeout: AI_COVER_TIMEOUT,
+    });
   },
 };
