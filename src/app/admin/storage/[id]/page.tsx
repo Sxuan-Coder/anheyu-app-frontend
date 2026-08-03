@@ -345,7 +345,7 @@ function PolicyEditForm({ initialData }: { initialData: StoragePolicy }) {
           </div>
         </div>
 
-        {initialData.id && (
+        {initialData.id && formData.type === "local" && (
           <div className="mt-4">
             <ImageAutoCompressEditor policyId={initialData.id} />
           </div>

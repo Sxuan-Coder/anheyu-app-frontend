@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from "axios";
-import { AxiosHeaders } from "axios";
-import { axiosInstance, tokenManager } from "@/lib/api/client";
+import { AxiosError, AxiosHeaders, isAxiosError } from "axios";
+import { apiClient, axiosInstance, tokenManager } from "@/lib/api/client";
 
 const getHeader = (config: AxiosRequestConfig, key: string): string | undefined => {
   const headers = AxiosHeaders.from(config.headers as unknown as AxiosHeaders | Record<string, string> | undefined);
@@ -25,6 +25,7 @@ describe("api client token attachment", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     axiosInstance.defaults.adapter = originalAdapter;
     tokenManager.setTokenGetter(() => null);
   });
@@ -45,5 +46,31 @@ describe("api client token attachment", () => {
     };
 
     await axiosInstance.post("/api/public/comments", { content: "test" });
+  });
+
+  it("保留服务端错误的传输原因，供幂等重试判断 HTTP 状态", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    axiosInstance.defaults.adapter = async config => {
+      const response: AxiosResponse = {
+        data: { code: 500, message: "服务器内部错误" },
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: {},
+        config,
+      };
+      throw new AxiosError("request failed", "ERR_BAD_RESPONSE", config, undefined, response);
+    };
+
+    let caught: unknown;
+    try {
+      await apiClient.get("/api/articles");
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toBe("服务器内部错误");
+    expect(isAxiosError((caught as Error).cause)).toBe(true);
+    expect(((caught as Error).cause as AxiosError).response?.status).toBe(500);
   });
 });

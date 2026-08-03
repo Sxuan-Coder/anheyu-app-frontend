@@ -409,7 +409,7 @@ class ApiClient {
     if (axios.isAxiosError(error) && error.response?.data) {
       const body = error.response.data as { message?: string; code?: number };
       if (body.message) {
-        throw new Error(body.message);
+        throw new Error(body.message, { cause: error });
       }
     }
     throw error;
