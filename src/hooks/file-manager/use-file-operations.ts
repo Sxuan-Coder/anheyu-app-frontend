@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import type { FileItem, FileInfoResponse, ParentInfo } from "@/types/file-manager";
 import { FileType } from "@/types/file-manager";
 import {
+  compressImageApi,
   createDirectLinksApi,
   createItemApi,
   createShareLinkApi,
@@ -20,6 +21,7 @@ import {
   updateFileContentByPublicIdApi,
 } from "@/lib/api/file-manager";
 import { extractLogicalPathFromUri, joinPath } from "@/utils/file-manager";
+import { formatBytes } from "@/lib/utils";
 import type {
   ConfirmDialogState,
   ImagePreviewHandle,
@@ -547,6 +549,40 @@ export function useFileOperations({
     }
   };
 
+  // ===== Compress Image =====
+  const onActionCompressImage = async () => {
+    const selectedItems = getSelectedFileItems();
+    if (selectedItems.length !== 1 || selectedItems[0].type !== FileType.File) {
+      toast("请选择一个图片文件进行操作。", "warning");
+      return;
+    }
+    const item = selectedItems[0];
+    try {
+      const res = await compressImageApi(item.id);
+      if (res.code === 200 && res.data) {
+        const data = res.data;
+        if (data.changed) {
+          // 覆盖保存后同步更新列表展示（体积、可能的改名与更新时间）
+          updateFileInState(item.id, {
+            size: data.size,
+            name: data.name,
+            updated_at: data.updated_at,
+          });
+          toast(
+            data.message || `压缩完成：${formatBytes(data.before_size)} → ${formatBytes(data.size)}`,
+            "success"
+          );
+        } else {
+          toast(data.message || "图片无需压缩", "default");
+        }
+      } else {
+        toast(res.message || "压缩失败", "danger");
+      }
+    } catch (error) {
+      toast(getErrorMessage(error, "压缩时发生错误"), "danger");
+    }
+  };
+
   return {
     imagePreviewRef,
     videoPreviewRef,
@@ -570,6 +606,7 @@ export function useFileOperations({
     onActionGetDirectLink,
     onActionRegenerateDirectoryThumbnails,
     onActionRegenerateThumbnail,
+    onActionCompressImage,
     handleCreateShare,
     setShareModalVisible,
     setDirectLinks,

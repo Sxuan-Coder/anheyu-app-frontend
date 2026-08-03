@@ -5,6 +5,7 @@
 import { apiClient, axiosInstance } from "./client";
 import type {
   BaseResponse,
+  CompressImageResponse,
   CreateDirectLinksRequest,
   CreateDirectLinksResponse,
   CreateShareLinkRequest,
@@ -114,6 +115,10 @@ export const deleteFilesApi = (ids: string[]): Promise<BaseResponse<unknown>> =>
 
 export const renameFileApi = (id: string, newName: string): Promise<BaseResponse<unknown>> => {
   return apiClient.put<unknown>(apiPath("file/rename"), { id, new_name: newName });
+};
+
+export const compressImageApi = (id: string): Promise<CompressImageResponse> => {
+  return apiClient.post<CompressImageResponse["data"]>(apiPath("file/compress"), { id });
 };
 
 export const getFileDetailsApi = (id: string): Promise<BaseResponse<FileInfoResponse>> => {

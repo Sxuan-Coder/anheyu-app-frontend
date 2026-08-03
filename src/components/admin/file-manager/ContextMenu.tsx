@@ -18,6 +18,7 @@ import {
   RiInformationLine,
   RiLinkM,
   RiRestartLine,
+  RiImageEditLine,
 } from "react-icons/ri";
 import type { ContextMenuTrigger } from "@/hooks/file-manager/use-file-manager";
 import { useRovingMenuNavigation } from "@/hooks/file-manager/use-roving-menu-navigation";
@@ -35,6 +36,11 @@ interface MenuItem {
 
 interface MenuContext {
   selectedIds?: string[];
+}
+
+/** 是否为支持「压缩图片」的光栅图片（gif 动图、svg 矢量图不支持） */
+function isCompressibleImage(fileName: string): boolean {
+  return /\.(jpg|jpeg|png|webp|bmp)$/i.test(fileName);
 }
 
 interface ContextMenuProps {
@@ -185,6 +191,16 @@ export function ContextMenu({ trigger, selectedFileIds, onSelect, onClosed }: Co
         { label: "重新生成缩略图", action: "regenerate-thumbnail", icon: <RiRestartLine /> },
         { divider: true }
       );
+    }
+    // 图片文件支持「压缩图片」（jpg/jpeg/png/webp/bmp，gif 动图不支持），插入到「详细信息」前
+    if (isCompressibleImage(file.name)) {
+      const infoIndex = nextItems.findIndex(item => item.action === "info");
+      const compressItem = { label: "压缩图片", action: "compress-image", icon: <RiImageEditLine /> };
+      if (infoIndex >= 0) {
+        nextItems.splice(infoIndex, 0, compressItem);
+      } else {
+        nextItems.push(compressItem);
+      }
     }
     return { items: nextItems, menuContext: { selectedIds: [...selectedFileIds] } };
   }, [trigger, blankMenu, itemMenu, selectedFileIds]);

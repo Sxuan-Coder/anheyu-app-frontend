@@ -183,6 +183,7 @@ export function useFileManager() {
           operations.handleShowDetailsForId(selection.getSelectedFileItems()[0].id);
         }
       },
+      "compress-image": operations.onActionCompressImage,
       "regenerate-thumbnail": operations.onActionRegenerateThumbnail,
     };
     const handler = actionMap[action];

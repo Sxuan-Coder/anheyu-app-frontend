@@ -218,6 +218,19 @@ export interface DirectLinkItem {
 export type CreateDirectLinksData = DirectLinkItem[];
 export type CreateDirectLinksResponse = BaseResponse<CreateDirectLinksData | null>;
 
+export interface CompressImageData {
+  public_id: string;
+  name: string;
+  before_size: number;
+  size: number;
+  /** false=无需压缩/压缩无收益/解码失败回退原图 */
+  changed: boolean;
+  message: string;
+  updated_at: string;
+}
+
+export type CompressImageResponse = BaseResponse<CompressImageData | null>;
+
 export interface ThumbnailCredential {
   sign: string;
   expires: string;
