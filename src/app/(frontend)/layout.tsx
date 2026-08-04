@@ -7,6 +7,7 @@ import { ConsolePrinter } from "@/providers/console-printer";
 
 const MusicPlayer = dynamic(() => import("@/components/MusicPlayer").then(mod => mod.MusicPlayer));
 const RightMenu = dynamic(() => import("@/components/RightMenu").then(mod => mod.RightMenu));
+const AIAssistant = dynamic(() => import("@/components/AIAssistant").then(mod => mod.AIAssistant));
 
 export default function FrontendLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -24,6 +25,9 @@ export default function FrontendLayout({ children }: { children: React.ReactNode
       <RightMenu />
       <IdleMount>
         <MusicPlayer />
+      </IdleMount>
+      <IdleMount timeout={2000}>
+        <AIAssistant />
       </IdleMount>
     </div>
   );
