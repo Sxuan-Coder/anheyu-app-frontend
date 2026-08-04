@@ -40,6 +40,22 @@ function getPageContext() {
   };
 }
 
+/** 从 axios 错误中提取后端返回的友好提示 */
+function extractErrorMessage(err: unknown): string {
+  const axiosErr = err as {
+    response?: { status?: number; data?: { message?: string } };
+  };
+  const status = axiosErr.response?.status;
+  const serverMsg = axiosErr.response?.data?.message;
+  if (status === 429 || (serverMsg && serverMsg.includes("繁忙"))) {
+    return "😅 AI 服务繁忙，请稍后再试。你也可以先看看「热门文章」「友情链接」等快捷功能。";
+  }
+  if (status === 503 || (serverMsg && serverMsg.includes("未配置"))) {
+    return "⚠️ AI 模型尚未配置，请在后台设置中启用后再使用对话功能。";
+  }
+  return "抱歉，AI 服务暂时不可用，请稍后再试。你也可以先看看「热门文章」「友情链接」等快捷功能。";
+}
+
 export function AIAssistant() {
   const router = useRouter();
   const siteConfig = useSiteConfigStore(state => state.siteConfig);
@@ -146,10 +162,7 @@ export function AIAssistant() {
         updateLastMessage(reply, res.data?.actions);
       } catch (err) {
         console.error("[AIAssistant] 对话失败:", err);
-        updateLastMessage(
-          "抱歉，AI 服务暂时不可用，请稍后再试。你也可以先看看「热门文章」「友情链接」等快捷功能。",
-          []
-        );
+        updateLastMessage(extractErrorMessage(err), []);
       } finally {
         setStreaming(false);
       }
