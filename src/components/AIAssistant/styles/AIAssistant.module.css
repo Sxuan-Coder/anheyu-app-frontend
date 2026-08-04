@@ -128,14 +128,8 @@
   width: min(375px, calc(100vw - 40px));
   height: min(600px, calc(100vh - 160px));
   overflow: hidden;
-  /* PostChat 风格：自上而下加深的灰色渐变遮罩 */
-  background: linear-gradient(
-    180deg,
-    rgb(245 246 248 / 0.92) 0%,
-    rgb(236 238 242 / 0.94) 45%,
-    rgb(225 228 234 / 0.96) 100%
-  );
-  backdrop-filter: saturate(180%) blur(24px);
+  /* 纯白背景 */
+  background-color: #ffffff;
   border: var(--style-border);
   border-radius: 18px;
   box-shadow:
@@ -145,15 +139,10 @@
   transition: box-shadow 0.3s ease;
 }
 
-/* 深色模式：渐变遮罩随之变深 */
+/* 深色模式：纯深色背景 */
 @media (prefers-color-scheme: dark) {
   .panel {
-    background: linear-gradient(
-      180deg,
-      rgb(38 40 46 / 0.92) 0%,
-      rgb(30 32 38 / 0.94) 45%,
-      rgb(22 24 30 / 0.96) 100%
-    );
+    background-color: #1f2026;
   }
 }
 
