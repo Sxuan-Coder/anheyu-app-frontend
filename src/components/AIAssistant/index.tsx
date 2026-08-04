@@ -24,10 +24,24 @@ import styles from "./styles/AIAssistant.module.css";
 const EMOJI_REGEX =
   /[\u{1F1E6}-\u{1F1FF}\u{1F300}-\u{1FAFF}\u{1F900}-\u{1F9FF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu;
 
+/** 鼠标跟随光晕：更新 CSS 变量 --glow-x / --glow-y（百分比） */
+function handlePointerGlow(e: React.MouseEvent<HTMLElement>) {
+  const el = e.currentTarget;
+  const rect = el.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) / rect.width) * 100;
+  const y = ((e.clientY - rect.top) / rect.height) * 100;
+  el.style.setProperty("--glow-x", `${x}%`);
+  el.style.setProperty("--glow-y", `${y}%`);
+}
+
+/** 剥离文本中的 Emoji（兜底）。仅删 Emoji，保留换行/缩进，不破坏 Markdown 排版。 */
 function stripEmoji(text: string): string {
   if (!text) return "";
-  return text.replace(EMOJI_REGEX, "").replace(/\s{2,}/g, " ").trim();
+  return text.replace(EMOJI_REGEX, "");
 }
+
+/** 配置 marked：开启 GFM、换行，让列表/段落正常分块 */
+marked.setOptions({ gfm: true, breaks: false });
 
 /** 把 Markdown 渲染为安全的 HTML（渲染前剥离 Emoji） */
 function renderMarkdown(md: string): string {
@@ -366,7 +380,15 @@ export function AIAssistant() {
                           <Sparkles size={13} />
                         </span>
                       )}
-                      <div className={cn(styles.bubble, msg.role === "user" ? styles.userBubble : styles.assistantBubble)}>
+                      <div
+                        className={cn(
+                          styles.bubble,
+                          styles.pointerGlowHost,
+                          msg.role === "user" ? styles.userBubble : styles.assistantBubble
+                        )}
+                        onMouseMove={handlePointerGlow}
+                      >
+                        <span className={styles.pointerGlow} aria-hidden="true" />
                         {msg.role === "assistant" ? (
                           <div
                             className={styles.markdown}
@@ -410,7 +432,8 @@ export function AIAssistant() {
 
             {/* 输入区 */}
             <div className={styles.panelFooter}>
-              <div className={styles.inputWrap}>
+              <div className={cn(styles.inputWrap, styles.pointerGlowHost)} onMouseMove={handlePointerGlow}>
+                <span className={styles.pointerGlow} aria-hidden="true" />
                 <textarea
                   ref={inputRef}
                   className={styles.input}
