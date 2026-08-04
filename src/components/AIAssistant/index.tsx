@@ -17,10 +17,23 @@ import { sanitizeCommentHtml } from "@/components/post/Comment/comment-utils";
 import { cn } from "@/lib/utils";
 import styles from "./styles/AIAssistant.module.css";
 
-/** 把 Markdown 渲染为安全的 HTML */
+/**
+ * 剥离文本中的 Emoji 表情符号（兜底，与后端 prompt 禁止 Emoji 形成双保险）。
+ * 覆盖常见 Emoji 区段：表情/符号/旗帜、杂项符号、dingbats、变体选择符等。
+ */
+const EMOJI_REGEX =
+  /[\u{1F1E6}-\u{1F1FF}\u{1F300}-\u{1FAFF}\u{1F900}-\u{1F9FF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu;
+
+function stripEmoji(text: string): string {
+  if (!text) return "";
+  return text.replace(EMOJI_REGEX, "").replace(/\s{2,}/g, " ").trim();
+}
+
+/** 把 Markdown 渲染为安全的 HTML（渲染前剥离 Emoji） */
 function renderMarkdown(md: string): string {
   if (!md) return "";
-  const html = marked.parse(md, { async: false }) as string;
+  const cleaned = stripEmoji(md);
+  const html = marked.parse(cleaned, { async: false }) as string;
   return sanitizeCommentHtml(html);
 }
 
@@ -48,10 +61,10 @@ function extractErrorMessage(err: unknown): string {
   const status = axiosErr.response?.status;
   const serverMsg = axiosErr.response?.data?.message;
   if (status === 429 || (serverMsg && serverMsg.includes("繁忙"))) {
-    return "😅 AI 服务繁忙，请稍后再试。你也可以先看看「热门文章」「友情链接」等快捷功能。";
+    return "AI 服务繁忙，请稍后再试。你也可以先看看「热门文章」「友情链接」等快捷功能。";
   }
   if (status === 503 || (serverMsg && serverMsg.includes("未配置"))) {
-    return "⚠️ AI 模型尚未配置，请在后台设置中启用后再使用对话功能。";
+    return "AI 模型尚未配置，请在后台设置中启用后再使用对话功能。";
   }
   return "抱歉，AI 服务暂时不可用，请稍后再试。你也可以先看看「热门文章」「友情链接」等快捷功能。";
 }
@@ -199,12 +212,12 @@ export function AIAssistant() {
   const renderFallbackQuickLinks = () => (
     <div className={styles.fallbackLinks}>
       {[
-        { label: "📖 全部文章", path: "/archives" },
-        { label: "🏷️ 标签", path: "/tags" },
-        { label: "📁 分类", path: "/categories" },
-        { label: "🔗 友情链接", path: "/link" },
-        { label: "🎵 音乐馆", path: "/music" },
-        { label: "👋 关于", path: "/about" },
+        { label: "全部文章", path: "/archives" },
+        { label: "标签", path: "/tags" },
+        { label: "分类", path: "/categories" },
+        { label: "友情链接", path: "/link" },
+        { label: "音乐馆", path: "/music" },
+        { label: "关于", path: "/about" },
       ].map(link => (
         <button
           key={link.path}
@@ -281,6 +294,10 @@ export function AIAssistant() {
                   <Sparkles size={15} />
                 </span>
                 <span>AI 智能对话</span>
+                <span className={styles.headerMeta}>
+                  <span className={styles.statusDot} aria-hidden="true" />
+                  在线
+                </span>
               </div>
               <div className={styles.headerActions}>
                 <button
@@ -317,7 +334,7 @@ export function AIAssistant() {
                   <div className={styles.welcomeIcon}>
                     <Sparkles size={28} />
                   </div>
-                  <p className={styles.welcomeTitle}>你好呀，我是本站 AI 助手 👋</p>
+                  <p className={styles.welcomeTitle}>你好呀，我是本站 AI 助手</p>
                   <p className={styles.welcomeDesc}>
                     我可以帮你推荐热门文章、搜索内容、介绍博客，甚至可以带你跳转到感兴趣的页面～
                   </p>

@@ -32,10 +32,14 @@
     0 8px 24px -6px var(--anzhiyu-main-op),
     0 4px 12px -4px rgb(0 0 0 / 25%);
   overflow: visible;
+  transition:
+    box-shadow 0.3s ease,
+    transform 0.2s ease;
 }
 
 .launcher:hover {
   box-shadow:
+    0 0 0 4px var(--anzhiyu-main-op),
     0 10px 28px -4px var(--anzhiyu-main-op),
     0 6px 16px -4px rgb(0 0 0 / 30%);
 }
@@ -104,10 +108,21 @@
   background-color: var(--anzhiyu-maskbgdeep);
   backdrop-filter: saturate(180%) blur(24px);
   border: var(--style-border);
-  border-radius: 16px;
+  border-radius: 18px;
   box-shadow:
     0 24px 60px -12px rgb(0 0 0 / 30%),
-    0 8px 24px -8px rgb(0 0 0 / 18%);
+    0 8px 24px -8px rgb(0 0 0 / 18%),
+    0 0 0 1px var(--anzhiyu-main-op);
+  transition: box-shadow 0.3s ease;
+}
+
+/* 对话进行中（输入框聚焦）面板外发光增强 */
+.panel:focus-within {
+  box-shadow:
+    0 24px 60px -12px rgb(0 0 0 / 30%),
+    0 8px 24px -8px rgb(0 0 0 / 18%),
+    0 0 0 1px var(--anzhiyu-main),
+    0 0 32px -8px var(--anzhiyu-main-op);
 }
 
 /* 窗口化模式：居中、更大 */
@@ -137,6 +152,38 @@
   font-size: 14px;
   font-weight: 600;
   color: var(--anzhiyu-fontcolor);
+}
+
+.headerMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 2px;
+  padding-left: 8px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--anzhiyu-lighttext, var(--anzhiyu-fontcolor));
+  opacity: 0.7;
+  border-left: var(--style-border);
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  background-color: #3ecf8e;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgb(62 207 142 / 20%);
+  animation: statusPulse 2s ease-in-out infinite;
+}
+
+@keyframes statusPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgb(62 207 142 / 20%);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgb(62 207 142 / 10%);
+  }
 }
 
 .headerIcon {
@@ -271,7 +318,9 @@
   background-color: var(--anzhiyu-main);
   border-color: var(--anzhiyu-main);
   transform: translateY(-2px);
-  box-shadow: 0 8px 18px -8px var(--anzhiyu-main-op);
+  box-shadow:
+    0 0 0 1px var(--anzhiyu-main),
+    0 8px 20px -6px var(--anzhiyu-main-op);
 }
 
 .fallbackLinks {
@@ -321,19 +370,36 @@
   font-size: 13.5px;
   line-height: 1.75;
   word-break: break-word;
+  transition:
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
 }
 
 .assistantBubble {
   color: var(--anzhiyu-fontcolor);
   background-color: var(--anzhiyu-card-bg);
   border: var(--style-border);
-  border-radius: 4px 14px 14px 14px;
+  border-radius: 4px 16px 16px 16px;
+}
+
+.assistantBubble:hover {
+  border-color: var(--anzhiyu-main);
+  box-shadow:
+    0 0 0 1px var(--anzhiyu-main),
+    0 8px 24px -6px var(--anzhiyu-main-op);
 }
 
 .userBubble {
   color: var(--anzhiyu-white);
   background: linear-gradient(135deg, var(--anzhiyu-main), var(--anzhiyu-theme-deep, var(--anzhiyu-main)));
-  border-radius: 14px 4px 14px 14px;
+  border-radius: 16px 4px 14px 14px;
+  box-shadow: 0 6px 18px -8px var(--anzhiyu-main-op);
+}
+
+.userBubble:hover {
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 50%),
+    0 8px 24px -6px var(--anzhiyu-main-op);
 }
 
 .userText {
@@ -426,7 +492,10 @@
 .actionBtn:hover {
   color: var(--anzhiyu-white);
   background-color: var(--anzhiyu-main);
-  box-shadow: 0 6px 16px -6px var(--anzhiyu-main-op);
+  border-color: var(--anzhiyu-main);
+  box-shadow:
+    0 0 0 1px var(--anzhiyu-main),
+    0 6px 18px -6px var(--anzhiyu-main-op);
 }
 
 /* 打字指示 */
@@ -526,6 +595,7 @@
 
 .sendBtn:hover:not(:disabled) {
   transform: scale(1.06);
+  box-shadow: 0 0 0 2px var(--anzhiyu-main-op);
 }
 
 .sendBtn:disabled {
