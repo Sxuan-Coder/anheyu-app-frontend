@@ -29,6 +29,8 @@ interface ProfilePayload {
   api_key?: string;
   api_key_masked?: string;
   has_api_key?: boolean;
+  /** 配图水印：false = 显式传 watermark=false 请求无水印；undefined = 不传（服务商默认） */
+  watermark?: boolean;
 }
 
 // 编辑态：在 payload 基础上增加 apiKeyInput（用户本次输入的新 Key）
@@ -61,6 +63,7 @@ function parseProfiles(raw: string): EditableProfile[] {
       purpose: p.purpose === "image" ? "image" : "summary",
       api_key_masked: p.api_key_masked ?? "",
       has_api_key: !!p.has_api_key,
+      watermark: p.purpose === "image" && p.watermark === false ? false : undefined,
       apiKeyInput: "",
     }));
   } catch {
@@ -87,6 +90,10 @@ function serializeProfiles(profiles: EditableProfile[]): string {
       // 未修改 Key：回传掩码标记，由后端用已存的明文 Key 还原
       payload.has_api_key = true;
       payload.api_key_masked = p.api_key_masked ?? "";
+    }
+    // 无水印：显式传 watermark=false；关闭时不传该参数（沿用服务商默认）
+    if (p.purpose === "image" && p.watermark === false) {
+      payload.watermark = false;
     }
     return payload;
   });
@@ -238,6 +245,16 @@ export function AIProfilesForm({ values, onChange, loading }: AIProfilesFormProp
                 <p className="text-[11px] text-muted-foreground">
                   {PURPOSE_OPTIONS.find(o => o.value === (p.purpose ?? "summary"))?.hint}
                 </p>
+                {(p.purpose ?? "summary") === "image" && (
+                  <div className="pt-1">
+                    <FormSwitch
+                      label="无水印生成"
+                      checked={p.watermark === false}
+                      onCheckedChange={v => update(i, { watermark: v ? false : undefined })}
+                      description="开启后生图请求显式携带 watermark=false 去除水印（如 SenseNova U1 Fast 默认带水印，去水印限时免费，后续或转为付费）。关闭时不传该参数，沿用服务商默认。"
+                    />
+                  </div>
+                )}
               </div>
 
               <FormInput
