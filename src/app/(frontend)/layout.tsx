@@ -4,6 +4,7 @@ import { IdleMount } from "@/components/common/IdleMount";
 import { ScrollInitializer } from "@/providers/scroll-initializer";
 import { ExternalLinkInterceptor } from "@/providers/external-link-interceptor";
 import { ConsolePrinter } from "@/providers/console-printer";
+import { IconifySameOriginSetup } from "@/providers/iconify-same-origin";
 
 const MusicPlayer = dynamic(() => import("@/components/MusicPlayer").then(mod => mod.MusicPlayer));
 const RightMenu = dynamic(() => import("@/components/RightMenu").then(mod => mod.RightMenu));
@@ -15,6 +16,7 @@ export default function FrontendLayout({ children }: { children: React.ReactNode
       <ScrollInitializer />
       <ConsolePrinter />
       <ExternalLinkInterceptor />
+      <IconifySameOriginSetup />
       <KeyboardShortcutsProvider />
       <Header />
       <OneImageBanner />

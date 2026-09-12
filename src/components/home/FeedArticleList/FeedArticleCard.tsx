@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { FaBagShopping, FaBook, FaFire, FaHashtag, FaThumbtack } from "react-icons/fa6";
 import { useSiteConfigStore } from "@/store/site-config-store";
 import { cn } from "@/lib/utils";
+import { optimizedImageSrc } from "@/lib/image-optimize";
 import { formatRelativeTime } from "@/utils/date";
 import type { FeedItem } from "@/types/article";
 import styles from "./FeedArticleCard.module.css";
@@ -102,7 +103,8 @@ export const FeedArticleCard = memo(function FeedArticleCard({
     if (useDefaultCover) {
       return FALLBACK_COVER;
     }
-    return article.cover_url || siteConfig?.post?.default?.default_cover || FALLBACK_COVER;
+    const raw = article.cover_url || siteConfig?.post?.default?.default_cover || FALLBACK_COVER;
+    return optimizedImageSrc(raw, "medium");
   }, [article.cover_url, siteConfig, useDefaultCover]);
 
   // 图片加载错误时使用默认封面

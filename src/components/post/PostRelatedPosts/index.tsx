@@ -8,6 +8,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { FaStar } from "react-icons/fa6";
+import { optimizedImageSrc } from "@/lib/image-optimize";
 import type { ArticleLink } from "@/types/article";
 import styles from "./PostRelatedPosts.module.css";
 
@@ -35,7 +36,7 @@ interface RelatedPostCoverImageProps {
  */
 function RelatedPostCoverImage({ coverUrl, defaultCover, alt }: RelatedPostCoverImageProps) {
   const [loadFailed, setLoadFailed] = useState(false);
-  const src = loadFailed || !coverUrl?.trim() ? defaultCover : coverUrl.trim();
+  const src = loadFailed || !coverUrl?.trim() ? defaultCover : optimizedImageSrc(coverUrl.trim(), "medium");
 
   return (
     <Image

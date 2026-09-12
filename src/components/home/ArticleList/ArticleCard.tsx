@@ -12,6 +12,7 @@ import Image from "next/image";
 import { Badge } from "@/components/ui";
 import { Eye, MessageSquare, Calendar, ArrowUpRight } from "lucide-react";
 import { formatNumber } from "@/lib/utils";
+import { optimizedImageSrc } from "@/lib/image-optimize";
 import { formatDateCN } from "@/utils/date";
 import { PerspectiveCard } from "@/components/effects";
 import type { Article } from "@/types";
@@ -29,7 +30,7 @@ export function ArticleCard({ article }: ArticleCardProps) {
           {article.cover && (
             <div className="relative aspect-16/10 overflow-hidden">
               <Image
-                src={article.cover}
+                src={optimizedImageSrc(article.cover)}
                 alt={article.title}
                 fill
                 className="object-cover transition-transform duration-700 group-hover:scale-110"

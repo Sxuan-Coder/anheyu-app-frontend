@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { addToast } from "@heroui/react";
 import { cn } from "@/lib/utils";
+import { optimizedImageSrc } from "@/lib/image-optimize";
 import { CreativityIcon } from "@/components/ui/creativity-icon";
 import { useSiteConfigStore } from "@/store/site-config-store";
 import { articleApi } from "@/lib/api/article";
@@ -254,7 +255,7 @@ export function HomeTop() {
                   <span className={styles.recentPostTopText}>荐</span>
                   <Image
                     className={styles.postBg}
-                    src={article.cover_url || "/images/default-cover.webp"}
+                    src={optimizedImageSrc(article.cover_url || "/images/default-cover.webp", "banner")}
                     alt={article.title}
                     fill
                     sizes="(max-width: 768px) 200px, 33vw"

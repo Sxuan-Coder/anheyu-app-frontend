@@ -10,6 +10,7 @@ import Image from "next/image";
 import { FaArrowRight, FaBook } from "react-icons/fa6";
 import { formatDate } from "@/utils/date";
 import { toSameOriginMediaUrl } from "@/utils/same-origin-media-url";
+import { optimizedImageSrc } from "@/lib/image-optimize";
 import styles from "./CardSeriesPost.module.css";
 
 interface SeriesArticle {
@@ -41,7 +42,7 @@ function resolveSeriesPostCoverSrc(coverUrl: string | undefined, defaultCover: s
   if (!trimmed) {
     return defaultCover;
   }
-  return toSameOriginMediaUrl(trimmed);
+  return optimizedImageSrc(toSameOriginMediaUrl(trimmed), "thumb");
 }
 
 interface SeriesPostCoverImageProps {

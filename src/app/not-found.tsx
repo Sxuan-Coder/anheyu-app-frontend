@@ -12,6 +12,7 @@ import Image from "next/image";
 import { Home } from "lucide-react";
 import { useSiteConfigStore } from "@/store/site-config-store";
 import { articleApi } from "@/lib/api/article";
+import { optimizedImageSrc } from "@/lib/image-optimize";
 import { formatRelativeTime } from "@/utils/date";
 import type { FeedItem } from "@/types/article";
 import styles from "./not-found.module.css";
@@ -118,7 +119,7 @@ export default function NotFound() {
                 <div key={article.id} className={styles.asideListItem} onClick={() => goToArticle(article)}>
                   <div className={styles.thumbnail}>
                     <Image
-                      src={article.cover_url || defaultCover}
+                      src={optimizedImageSrc(article.cover_url || defaultCover, "thumb")}
                       alt={article.title}
                       width={100}
                       height={100}

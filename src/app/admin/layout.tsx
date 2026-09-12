@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth-store";
 import { useShallow } from "zustand/shallow";
 import { AdminSidebar } from "@/components/admin";
+import { IconifySameOriginSetup } from "@/providers/iconify-same-origin";
 import { useSiteConfigStore } from "@/store/site-config-store";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -49,6 +50,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="admin-layout h-screen flex flex-col overflow-hidden bg-muted/30">
+      <IconifySameOriginSetup />
       {/* 移动端顶部导航 */}
       <div className="lg:hidden flex items-center justify-between p-4 bg-card border-b border-border shrink-0">
         <Link href="/admin" className="font-bold text-xl gradient-text">{siteTitle}</Link>

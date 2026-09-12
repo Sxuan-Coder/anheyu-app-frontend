@@ -9,6 +9,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { formatDate } from "@/utils/date";
 import { toSameOriginMediaUrl } from "@/utils/same-origin-media-url";
+import { optimizedImageSrc } from "@/lib/image-optimize";
 import type { RecentArticle } from "@/types/article";
 import styles from "./CardRecentPost.module.css";
 
@@ -27,7 +28,7 @@ function resolveRecentPostCoverSrc(coverUrl: string | undefined, defaultCover: s
   if (!trimmed) {
     return defaultCover;
   }
-  return toSameOriginMediaUrl(trimmed);
+  return optimizedImageSrc(toSameOriginMediaUrl(trimmed), "thumb");
 }
 
 interface RecentPostCoverImageProps {

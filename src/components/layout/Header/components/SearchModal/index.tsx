@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type { SyntheticEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
+import { optimizedImageSrc } from "@/lib/image-optimize";
 import { useSiteConfigStore } from "@/store/site-config-store";
 
 import styles from "./styles.module.css";
@@ -438,7 +439,7 @@ export function SearchModal({ isOpen, onClose, initialKeyword = "" }: SearchModa
                       <div className={styles.resultThumbnail}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={result.cover_url || configuredDefaultCover}
+                          src={optimizedImageSrc(result.cover_url || configuredDefaultCover, "thumb")}
                           alt={stripHtmlTag(result.title) || "搜索结果封面"}
                           onError={handleCoverImageError}
                         />

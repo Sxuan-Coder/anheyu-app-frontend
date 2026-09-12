@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { FaClock, FaFileLines, FaHashtag, FaTriangleExclamation } from "react-icons/fa6";
 import { useArticleList } from "@/hooks/queries";
 import { useSiteConfigStore } from "@/store/site-config-store";
+import { optimizedImageSrc } from "@/lib/image-optimize";
 import { Pagination } from "@/components/home";
 import type { Article } from "@/types/article";
 import styles from "./ArchiveList.module.css";
@@ -151,7 +152,7 @@ export function ArchiveList({ year, month, page = 1 }: ArchiveListProps) {
                 <div key={article.id} className={styles.articleSortItem} onClick={() => goToPost(article)}>
                   <div className={styles.articleSortItemImg}>
                     <img
-                      src={article.cover_url || defaultCover}
+                      src={optimizedImageSrc(article.cover_url || defaultCover)}
                       alt={article.title}
                       onError={event => {
                         event.currentTarget.src = defaultCover;
