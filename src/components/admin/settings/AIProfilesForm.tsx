@@ -31,6 +31,8 @@ interface ProfilePayload {
   has_api_key?: boolean;
   /** 配图水印：false = 显式传 watermark=false 请求无水印；undefined = 不传（服务商默认） */
   watermark?: boolean;
+  /** 生图返回格式（url / b64_json）；空 = 不传该参数，由服务商决定默认格式 */
+  response_format?: string;
 }
 
 // 编辑态：在 payload 基础上增加 apiKeyInput（用户本次输入的新 Key）
@@ -64,6 +66,7 @@ function parseProfiles(raw: string): EditableProfile[] {
       api_key_masked: p.api_key_masked ?? "",
       has_api_key: !!p.has_api_key,
       watermark: p.purpose === "image" && p.watermark === false ? false : undefined,
+      response_format: p.response_format ?? "",
       apiKeyInput: "",
     }));
   } catch {
@@ -94,6 +97,10 @@ function serializeProfiles(profiles: EditableProfile[]): string {
     // 无水印：显式传 watermark=false；关闭时不传该参数（沿用服务商默认）
     if (p.purpose === "image" && p.watermark === false) {
       payload.watermark = false;
+    }
+    const responseFormat = p.response_format?.trim();
+    if (p.purpose === "image" && responseFormat) {
+      payload.response_format = responseFormat;
     }
     return payload;
   });
@@ -246,14 +253,25 @@ export function AIProfilesForm({ values, onChange, loading }: AIProfilesFormProp
                   {PURPOSE_OPTIONS.find(o => o.value === (p.purpose ?? "summary"))?.hint}
                 </p>
                 {(p.purpose ?? "summary") === "image" && (
-                  <div className="pt-1">
-                    <FormSwitch
-                      label="无水印生成"
-                      checked={p.watermark === false}
-                      onCheckedChange={v => update(i, { watermark: v ? false : undefined })}
-                      description="开启后生图请求显式携带 watermark=false 去除水印（如 SenseNova U1 Fast 默认带水印，去水印限时免费，后续或转为付费）。关闭时不传该参数，沿用服务商默认。"
-                    />
-                  </div>
+                  <>
+                    <div className="pt-1">
+                      <FormSwitch
+                        label="无水印生成"
+                        checked={p.watermark === false}
+                        onCheckedChange={v => update(i, { watermark: v ? false : undefined })}
+                        description="开启后生图请求显式携带 watermark=false 去除水印（如 SenseNova U1 Fast 默认带水印，去水印限时免费，后续或转为付费）。关闭时不传该参数，沿用服务商默认。"
+                      />
+                    </div>
+                    <div className="pt-1">
+                      <FormInput
+                        label="返回格式 response_format"
+                        placeholder="留空由服务商默认（url / b64_json）"
+                        value={p.response_format ?? ""}
+                        onValueChange={v => update(i, { response_format: v })}
+                        description="部分中转站仅支持 url，传 b64_json 会被拒绝（400）；仅服务商标注的格式与默认不符时才需要填写。"
+                      />
+                    </div>
+                  </>
                 )}
               </div>
 
