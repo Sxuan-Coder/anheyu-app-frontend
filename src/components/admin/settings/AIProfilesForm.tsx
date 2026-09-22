@@ -6,6 +6,7 @@ import { Plus, Trash2, Wand2, ImageIcon, Sparkles } from "lucide-react";
 import { FormInput } from "@/components/ui/form-input";
 import { FormSwitch } from "@/components/ui/form-switch";
 import { SettingsSection } from "./SettingsSection";
+import { CoverTemplatesForm } from "./CoverTemplatesForm";
 import { Spinner } from "@/components/ui/spinner";
 import { KEY_AI_PROFILES } from "@/lib/settings/setting-keys";
 
@@ -315,6 +316,8 @@ export function AIProfilesForm({ values, onChange, loading }: AIProfilesFormProp
           提示：配置完成后，点击页面右下角“保存”按钮生效。文章编辑器中将出现「AI 摘要」「AI 配图」按钮。
         </div>
       </SettingsSection>
+
+      <CoverTemplatesForm values={values} onChange={onChange} />
     </div>
   );
 }

@@ -45,7 +45,8 @@ import { useDocSeriesList } from "@/hooks/queries/use-doc-series";
 import { articleApi } from "@/lib/api/article";
 import { postManagementApi } from "@/lib/api/post-management";
 import { articleAiApi } from "@/lib/api/article-ai";
-import { buildCoverSourcePrompt } from "@/constants/ai-cover-prompt";
+import { AICoverDialog } from "./AICoverDialog";
+import type { CoverPromptInput } from "@/constants/cover-placeholders";
 import { getErrorMessage } from "@/lib/api/client";
 import type { Editor } from "@tiptap/react";
 import type { ArticleStatus } from "@/types/post-management";
@@ -804,7 +805,7 @@ function SettingsContent({
   const coverImgInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingCover, setIsUploadingCover] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
-  const [isGeneratingCover, setIsGeneratingCover] = useState(false);
+  const [isCoverDialogOpen, setIsCoverDialogOpen] = useState(false);
   const [fillSummaryDialogOpen, setFillSummaryDialogOpen] = useState(false);
   const [pendingSummaryClip, setPendingSummaryClip] = useState<string | null>(null);
 
@@ -959,72 +960,73 @@ function SettingsContent({
     onUpdateField,
   ]);
 
-  // AI 一键配图：先自动补齐摘要，再拼好「海报模板 + 文章信息」源提示词，交给后端两步生成（文本模型填模板 → 图像模型出图）
-  const handleAICover = useCallback(async () => {
+  // AI 配图前置：摘要为空时自动生成并写入表单，返回最终可用的摘要文本
+  const ensureSummaryForCover = useCallback(async (): Promise<string> => {
+    const existing = (meta.summaries[0] ?? "").trim();
+    if (existing) return existing;
+
     const title = (articleTitle ?? "").trim();
     const content = getCompleteHtmlForAISummary?.() ?? getBodyPlainTextForSummary?.() ?? "";
-    if (!title && !content.trim()) {
-      addToast({ title: "标题和正文均为空，无法生成配图", color: "warning" });
-      return;
-    }
-    setIsGeneratingCover(true);
+    if (!title && !content.trim()) return "";
+
     try {
-      // 摘要为空时先自动生成（源提示词需要带摘要）
-      let summary = (meta.summaries[0] ?? "").trim();
-      if (!summary) {
-        const summaryRes = await articleAiApi.summary({ title, content });
-        summary = summaryRes.data?.summary?.trim() ?? "";
-        if (summary) {
-          if (editorVariant === "app") {
-            onUpdateField("summaries", [summary]);
-          } else {
-            const arr = [...meta.summaries];
-            const emptyIdx = arr.findIndex(s => !s.trim());
-            if (emptyIdx >= 0) {
-              arr[emptyIdx] = summary;
-            } else {
-              arr.unshift(summary);
-            }
-            onUpdateField("summaries", arr.slice(0, maxSummarySlots));
-          }
+      const summaryRes = await articleAiApi.summary({ title, content });
+      const summary = summaryRes.data?.summary?.trim() ?? "";
+      if (!summary) return "";
+      if (editorVariant === "app") {
+        onUpdateField("summaries", [summary]);
+      } else {
+        const arr = [...meta.summaries];
+        const emptyIdx = arr.findIndex(s => !s.trim());
+        if (emptyIdx >= 0) {
+          arr[emptyIdx] = summary;
+        } else {
+          arr.unshift(summary);
         }
+        onUpdateField("summaries", arr.slice(0, maxSummarySlots));
       }
-
-      // 分类/标签 ID → 名称映射
-      const categoryName = meta.post_category_ids
-        .map(id => categories.find(c => c.id === id)?.name)
-        .find(Boolean);
-      const tagNames = meta.post_tag_ids
-        .map(id => tags.find(t => t.id === id)?.name)
-        .filter((n): n is string => !!n);
-
-      const sourcePrompt = buildCoverSourcePrompt({ title, category: categoryName, tags: tagNames, summary });
-      const res = await articleAiApi.cover({ prompt: sourcePrompt });
-      const url = res.data?.url;
-      if (!url) {
-        addToast({ title: "AI 未返回有效图片", color: "warning" });
-        return;
-      }
-      onUpdateField("cover_url", url);
-      addToast({ title: "AI 配图已生成", color: "success" });
+      return summary;
     } catch (err) {
-      addToast({ title: "AI 配图生成失败", description: getErrorMessage(err), color: "danger" });
-    } finally {
-      setIsGeneratingCover(false);
+      // 摘要失败不阻断配图（提示词会缺摘要，但仍可生成）
+      addToast({ title: "自动生成摘要失败，将不携带摘要生成配图", description: getErrorMessage(err), color: "warning" });
+      return "";
     }
   }, [
     articleTitle,
     getCompleteHtmlForAISummary,
     getBodyPlainTextForSummary,
     meta.summaries,
-    meta.post_category_ids,
-    meta.post_tag_ids,
-    categories,
-    tags,
     editorVariant,
     maxSummarySlots,
     onUpdateField,
   ]);
+
+  // AI 一键配图：打开模板选择弹窗，生成流程在 AICoverDialog 内完成
+  const handleOpenAICover = useCallback(() => {
+    const title = (articleTitle ?? "").trim();
+    const content = getCompleteHtmlForAISummary?.() ?? getBodyPlainTextForSummary?.() ?? "";
+    if (!title && !content.trim()) {
+      addToast({ title: "标题和正文均为空，无法生成配图", color: "warning" });
+      return;
+    }
+    setIsCoverDialogOpen(true);
+  }, [articleTitle, getCompleteHtmlForAISummary, getBodyPlainTextForSummary]);
+
+  // 弹窗展示与生成共用的文章元信息（分类/标签 ID → 名称映射）
+  const coverArticleInfo = useMemo<CoverPromptInput>(() => {
+    const categoryName = meta.post_category_ids
+      .map(id => categories.find(c => c.id === id)?.name)
+      .find(Boolean);
+    const tagNames = meta.post_tag_ids
+      .map(id => tags.find(t => t.id === id)?.name)
+      .filter((n): n is string => !!n);
+    return {
+      title: (articleTitle ?? "").trim(),
+      category: categoryName,
+      tags: tagNames,
+      summary: (meta.summaries[0] ?? "").trim(),
+    };
+  }, [articleTitle, meta.post_category_ids, meta.post_tag_ids, meta.summaries, categories, tags]);
 
   return (
     <>
@@ -1128,11 +1130,10 @@ function SettingsContent({
             <button
               type="button"
               className="sb-upload-btn"
-              onClick={handleAICover}
-              disabled={isGeneratingCover}
+              onClick={handleOpenAICover}
               title="AI 一键配图"
             >
-              {isGeneratingCover ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+              <Sparkles className="w-3.5 h-3.5" />
             </button>
             <input
               ref={coverImgInputRef}
@@ -1456,6 +1457,14 @@ function SettingsContent({
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <AICoverDialog
+        isOpen={isCoverDialogOpen}
+        onOpenChange={setIsCoverDialogOpen}
+        articleInfo={coverArticleInfo}
+        ensureSummary={ensureSummaryForCover}
+        onGenerated={url => onUpdateField("cover_url", url)}
+      />
     </>
   );
 }

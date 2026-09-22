@@ -483,6 +483,8 @@ export const KEY_WECHAT_SHARE_APP_SECRET = "wechat.share.app_secret";
 
 // ==================== AI 配置 (PRO) ====================
 export const KEY_AI_PROFILES = "ai_profiles";
+/** AI 封面自定义模板（JSON 数组，见 constants/cover-templates.ts 的 CustomCoverTemplate） */
+export const KEY_AI_COVER_TEMPLATES = "ai_cover_templates";
 export const KEY_AI_DEFAULT_PROFILE_ID = "ai_default_profile_id";
 export const KEY_AI_SUMMARY_PROVIDER = "ai_summary_provider";
 export const KEY_AI_SUMMARY_API_KEY = "ai_summary_api_key";
