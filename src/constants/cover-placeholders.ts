@@ -27,7 +27,9 @@ export const DATA_PLACEHOLDERS: DataPlaceholder[] = [
 /** 常用创意占位符（后端 LLM 依文章信息填充，可自由扩展任意 {{KEY}}） */
 export const CREATIVE_PLACEHOLDER_SUGGESTIONS: DataPlaceholder[] = [
   { key: "KEYWORDS", label: "核心关键词", description: "由 LLM 从标题/概要提炼 1~3 个核心关键词" },
+  { key: "KEYWORD", label: "背景关键词", description: "由 LLM 提炼的 1 个背景超大文字关键词" },
   { key: "LOGO_OR_SUBJECT", label: "中央 Logo/主体", description: "由 LLM 依文章主题选择代表性图标或视觉主体" },
+  { key: "MAIN_SUBJECT", label: "中央主体描述", description: "由 LLM 设计的中央 3D 视觉主体完整描述" },
 ];
 
 /** buildCoverSourcePrompt 的入参：文章表单态元信息 */
