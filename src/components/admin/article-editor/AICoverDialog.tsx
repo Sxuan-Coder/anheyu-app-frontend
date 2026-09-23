@@ -134,6 +134,8 @@ export function AICoverDialog({ isOpen, onOpenChange, onGenerated, articleInfo, 
         description: "选择海报模板，系统自动填充文章信息后生成封面",
         icon: Sparkles,
       }}
+      // 文章编辑器主容器是 fixed z-[60] 的不透明层，HeroUI Modal 默认 z-50 会被盖住，必须抬高
+      classNames={{ wrapper: "z-[9998]", backdrop: "z-[9997]" }}
     >
       {() => (
         <div className="px-6 pb-5 space-y-4">
